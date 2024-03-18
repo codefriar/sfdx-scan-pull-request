@@ -108,9 +108,8 @@ export async function performStaticCodeAnalysisOnFilesInDiff(
     console.error({
       message: typedErr.message,
       status: typedErr.status,
-      // stack: typedErr.stack,
-      lastStack: typedErr.stack.slice(-500),
-      output: typedErr.output?.toString(),
+      stack: typedErr.stack,
+      output: typedErr.output?.toString().slice(-1000),
     });
     setFailed("Something went wrong when scanning the files.");
   }
