@@ -109,6 +109,7 @@ export async function performStaticCodeAnalysisOnFilesInDiff(
       message: typedErr.message,
       status: typedErr.status,
       stack: typedErr.stack,
+      lastStack: typedErr.stack.slice(-500),
       output: typedErr.output?.toString(),
     });
     setFailed("Something went wrong when scanning the files.");
