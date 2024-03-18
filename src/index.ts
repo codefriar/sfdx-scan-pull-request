@@ -108,7 +108,7 @@ export async function performStaticCodeAnalysisOnFilesInDiff(
     console.error({
       message: typedErr.message,
       status: typedErr.status,
-      stack: typedErr.stack,
+      // stack: typedErr.stack,
       lastStack: typedErr.stack.slice(-500),
       output: typedErr.output?.toString(),
     });
