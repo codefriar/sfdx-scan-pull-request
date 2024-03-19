@@ -78,20 +78,20 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const existingComments = await this.getExistingComments();
     console.log('Gathered existing comments: ' + existingComments.length);
     const netNewComments = await this.filterOutExistingComments(existingComments);
-    console.debug('Net new comments: ' + netNewComments.length);
+    console.error('Net new comments: ' + netNewComments.length);
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
-    console.debug('Deleted resolved Comments');
+    console.error('Deleted resolved Comments');
     if(netNewComments.length > this.inputs.maxNumberOfComments) {
-      console.debug('Too many comments to write, switching to artifact upload');
+      console.error('Too many comments to write, switching to artifact upload');
       // If the number of violations is higher than the developer-specified maximum,
       // then we'll write the violations to a file, attach that file, and write a single comment
       // referencing the attached file.
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
     } else if(netNewComments.length > 15) {
-      console.debug(`Writing comments in batches of ${this.inputs.commentBatchSize}`);
+      console.error(`Writing comments in batches of ${this.inputs.commentBatchSize}`);
       // 15 is a heuristic # of comments that can be written without hitting rate limits. this might require tweaking.
       // in this case, we'll write the comments in batches of 15, with a delay in between each batch.
       await this.writeCommentsInBatches(netNewComments);
@@ -129,18 +129,18 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   }
 
   private async uploadCommentsAsArtifactAndPostComment(comments: GithubComment[]) {
-    console.debug('Starting to write comments to a file and upload as artifact');
+    console.error('Starting to write comments to a file and upload as artifact');
     await fs.writeFile(COMMENTS_FILE_NAME, comments.map(comment => comment.body).join("\n\n"));
-    console.debug(`Wrote comments to ${COMMENTS_FILE_NAME}`);
+    console.error(`Wrote comments to ${COMMENTS_FILE_NAME}`);
     try {
-      console.debug(`Uploading ${COMMENTS_FILE_NAME} as artifact`);
+      console.error(`Uploading ${COMMENTS_FILE_NAME} as artifact`);
       await new DefaultArtifactClient().uploadArtifact(COMMENTS_FILE_NAME, [COMMENTS_FILE_NAME], process.cwd());
-      console.debug(`Uploaded ${COMMENTS_FILE_NAME} as artifact`);
+      console.error(`Uploaded ${COMMENTS_FILE_NAME} as artifact`);
       const comment = {
         body: `Too many violations to display in a single comment. See the attached artifact for details.`,
       } as GithubComment;
       await this.performGithubRequest("POST", comment);
-      console.debug('Uploaded comments as artifact and posted comment');
+      console.error('Uploaded comments as artifact and posted comment');
     } catch (error) {
       console.error('Failed to upload artifact or post comment: ' + JSON.stringify(error, null, 2));
     }
@@ -183,14 +183,21 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   private async getExistingComments() {
     console.log("Getting existing comments using GitHub REST API...");
     let result = Array<GithubExistingComment>();
+    console.log('In getExistingComments');
     try {
-      result = (
-        await this.performGithubRequest<GithubExistingComment[]>("GET")
-      ).filter(
-        (comment) =>
-          comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
-          comment.user.type === "Bot"
-      );
+      let result = await this.performGithubRequest("GET") as GithubExistingComment[];
+      console.log(`In Try/Catch. Found: ${result.length} results`);
+      const filteredResult = result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) && comment.user.type === "Bot");
+      console.log(`Filtered: ${filteredResult.length} results`);
+      // result = (
+      //   await this.performGithubRequest<GithubExistingComment[]>("GET")
+      // ).filter(
+      //   (comment) =>
+      //     comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
+      //     comment.user.type === "Bot"
+      // );
+      console.log("In Try/Catch: " + result.length);
+
     } catch (error) {
       console.error(
         "Error when fetching existing comments: " +
