@@ -4,6 +4,9 @@ export type PluginInputs = {
   severityThreshold: number;
   strictlyEnforcedRules: string;
   customPmdRules?: string;
+  maxNumberOfComments: number;
+  commentBatchSize: number;
+  rateLimitWaitTime: number;
   deleteResolvedComments: boolean;
   reportMode: string | "comments" | "check-runs";
   target: string;

@@ -21,10 +21,13 @@ import {
   GithubExistingComment,
 } from "./reporter.types";
 import { ScannerViolation } from "../sfdxCli";
+import { promises as fs} from "fs";
+import { DefaultArtifactClient } from "@actions/artifact";
 
 const ERROR = "Error";
 
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
+const COMMENTS_FILE_NAME = "sfdx-scanner-comments.md";
 
 export class CommentsReporter extends BaseReporter<GithubComment> {
   /**
@@ -73,28 +76,69 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   async write() {
     console.log("Writing comments using GitHub REST API...");
     const existingComments = await this.getExistingComments();
+    const netNewComments = await this.filterOutExistingComments(existingComments);
 
-    for (let comment of this.issues) {
-      const existingComment = existingComments.find((existingComment) =>
-        this.matchComment(comment, existingComment)
-      );
-      if (!existingComment) {
-        try {
-          await this.performGithubRequest("POST", comment);
-        } catch (error) {
-          console.error(
-            "Error when writing comments: " + JSON.stringify(error, null, 2)
-          );
-        }
-      } else {
-        console.log(`Skipping existing comment ${existingComment.url}`);
-      }
+    // moving this up the stack to enable deleting resolved comments before trying to write new ones
+    if (this.inputs.deleteResolvedComments) {
+      await this.deleteResolvedComments(this.issues, existingComments);
+    }
+
+    if(netNewComments.length > this.inputs.maxNumberOfComments) {
+      // If the number of violations is higher than the developer-sepecified maximum,
+      // then we'll write the violations to a file, attach that file, and write a single comment
+      // referencing the attached file.
+      await this.UploadCommentsAsArtifactAndPostComment(netNewComments);
+    } else if(netNewComments.length > 15) {
+      // 15 is a heuristic # of comments that can be written without hitting rate limits. this might require tweaking.
+      // in this case, we'll write the comments in batches of 15, with a delay in between each batch.
+      await this.writeCommentsInBatches(netNewComments);
     }
 
     this.checkHasHaltingError();
+  }
 
-    if (this.inputs.deleteResolvedComments) {
-      await this.deleteResolvedComments(this.issues, existingComments);
+  private async writeCommentsInBatches(comments: GithubComment[]) {
+    for(let index = 0; index <comments.length; index += this.inputs.commentBatchSize){
+      const thisBatch = comments.slice(index, index + this.inputs.commentBatchSize);
+        await Promise.all([this.postCommentBatch(thisBatch), new Promise(resolve => setTimeout(resolve, this.inputs.rateLimitWaitTime))]);
+    }
+  }
+
+  private async postCommentBatch(thisBatch: GithubComment[]){
+    for(const comment of thisBatch){
+      try {
+        await this.performGithubRequest("POST", comment);
+      } catch (error) {
+        console.error(
+            "Error when writing comments: " + JSON.stringify(error, null, 2)
+        );
+      }
+    }
+  }
+
+  private async filterOutExistingComments(existingComments: GithubComment[]) {
+
+    // iterate over the issues and filter out any that do not have existing comments
+    return this.issues.filter((issue) => {
+      return !existingComments.find((existingComment) =>
+        this.matchComment(issue, existingComment)
+      );
+    });
+  }
+
+  private async UploadCommentsAsArtifactAndPostComment(comments: GithubComment[]) {
+    await fs.writeFile(COMMENTS_FILE_NAME, comments.map(comment => comment.body).join("\n\n"));
+    try {
+      const artifactClient = new DefaultArtifactClient();
+      await artifactClient.uploadArtifact(COMMENTS_FILE_NAME, [COMMENTS_FILE_NAME], process.cwd());
+      const comment = {
+        body: `Too many violations to display in a single comment. See the attached artifact for details.`,
+      } as GithubComment;
+      await this.performGithubRequest("POST", comment);
+    } catch (error) {
+      console.error(
+          "Error when uploading artifact: " + JSON.stringify(error, null, 2)
+      );
     }
   }
 

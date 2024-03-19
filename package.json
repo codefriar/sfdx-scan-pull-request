@@ -6,7 +6,8 @@
     "@octokit/action": "^4.0.4",
     "parse-diff": "^0.9.0",
     "path": "^0.12.7",
-    "simple-git": "^3.17.0"
+    "simple-git": "^3.17.0",
+    "@actions/artifact": "^2.1.4"
   },
   "devDependencies": {
     "@swc/jest": "0.2.21",
