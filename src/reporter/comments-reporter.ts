@@ -75,6 +75,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    */
   async write() {
     console.log("Writing comments using GitHub REST API...");
+    console.log('Gathering existing comments within the write method()');
     const existingComments = await this.getExistingComments();
     console.log('Gathered existing comments: ' + existingComments.length);
     const netNewComments = await this.filterOutExistingComments(existingComments);
