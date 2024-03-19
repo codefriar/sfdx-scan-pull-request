@@ -49,12 +49,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`
     }/comments`;
 
+    console.log(`Performing GitHub request: ${method} ${endpoint}`);
+
     return (
       method === "POST"
         ? octokit.request(endpoint, optionalBody)
         : octokit.paginate(endpoint)
     ) as Promise<T>;
   }
+
+  //     await octokit.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
 
   /**
    * Delete a single GitHub comment
@@ -139,6 +143,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       console.error(`Uploaded ${COMMENTS_FILE_NAME} as artifact`);
       const comment = {
         body: `Too many violations to display in a single comment. See the attached artifact for details.`,
+        commit_id: this.issues[0]?.commit_id,
+        path: this.issues[0]?.path,
+        line: 1
       } as GithubComment;
       await this.performGithubRequest("POST", comment);
       console.error('Uploaded comments as artifact and posted comment');
