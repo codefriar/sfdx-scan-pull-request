@@ -27,6 +27,15 @@ inputs:
   delete-resolved-comments:
     description: "Set `true` to delete comments once the issue has been resolved"
     default: "false"
+  max-number-of-comments:
+    description: "Maximum number of comments to post before switching to an artifact"
+    default: "100"
+  rate-limit-wait-time:
+    description: "Time to wait before retrying after hitting the rate limit"
+    default: "60000"
+  comment-batch-size:
+    description: "Number of comments to post in a single batch"
+    default: "15"
 runs:
   using: "node16"
   main: "dist/index.js"
