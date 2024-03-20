@@ -93,7 +93,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         `Comment count threshold of ${this.inputs.maxNumberOfComments} exceeded, writing to artifact instead`
       );
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
-    } else if (netNewComments.length > 15) {
+    } else if (netNewComments.length > this.inputs.commentBatchSize) {
       console.log(
         `Writing comments in batches of ${this.inputs.commentBatchSize}`
       );
@@ -175,10 +175,13 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       comments.map((comment) => comment.body).join("\n\n")
     );
     try {
-      await new DefaultArtifactClient().uploadArtifact(
+      let artifactResponse = await new DefaultArtifactClient().uploadArtifact(
         COMMENTS_FILE_NAME,
         [COMMENTS_FILE_NAME],
         process.cwd()
+      );
+      console.log(
+        "Artifact upload response: " + JSON.stringify(artifactResponse, null, 2)
       );
       const comment = {
         body: `Too many violations to display in a single comment. See the attached artifact for details.`,

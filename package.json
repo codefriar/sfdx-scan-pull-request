@@ -29,6 +29,8 @@
     "ncc": "ncc build lib/index.js -m",
     "runLocally": "echo act must be installed for this to work && act pull_request -W .github/workflows/example-action.yml --input pmdconfig=tests/pmd-ruleset.xml --input severity-threshold=3 --eventpath tests/example-github-event.json",
     "test": "jest --coverage",
-    "tsc": "tsc"
+    "tsc": "tsc",
+    "prettier": "prettier --write .",
+    "release": "npm run build && git add . && git commit -m 'build' && git tag -a \"build ${npm_config_tag}\" \"v${npm_config_tag}\" && git push --follow-tags"
   }
 }
