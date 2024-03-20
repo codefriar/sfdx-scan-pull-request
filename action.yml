@@ -36,6 +36,9 @@ inputs:
   comment-batch-size:
     description: "Number of comments to post in a single batch"
     default: "15"
+  debug:
+    description: "Set `true` to enable debug mode"
+    default: "false"
 runs:
   using: "node20"
   main: "dist/index.js"

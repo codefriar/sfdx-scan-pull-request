@@ -10,6 +10,7 @@ export type PluginInputs = {
   deleteResolvedComments: boolean;
   reportMode: string | "comments" | "check-runs";
   target: string;
+  debug: boolean;
 };
 
 export function getScannerViolationType(
@@ -43,4 +44,8 @@ export function getScannerViolationType(
 
 export function getGithubFilePath(commitId: string, filePath: string) {
   return ["..", "tree", commitId, filePath].join("/");
+}
+
+export function logger(message: string) {
+  console.debug("Logger says: " + message);
 }

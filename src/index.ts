@@ -61,6 +61,7 @@ function initialSetup() {
     strictlyEnforcedRules: getInput("strictly-enforced-rules"),
     deleteResolvedComments: getInput("delete-resolved-comments") === "true",
     target: context?.payload?.pull_request ? "" : getInput("target"),
+    debug: getInput("debug") === "true",
   };
 
   const reporterParams = {
