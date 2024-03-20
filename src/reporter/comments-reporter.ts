@@ -80,12 +80,15 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
+    this.logger("Net new comments: " + netNewComments.length);
+    this.logger("Net new comments: " + JSON.stringify(netNewComments, null, 2));
     this.logger("Deleting resolved comemts");
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
     this.logger("Writing " + netNewComments.length + " net new comments ");
+
     if (netNewComments.length > this.inputs.maxNumberOfComments) {
       // If the number of violations is higher than the developer-specified maximum,
       // then we'll write the violations to a file, attach that file, and write a single comment
@@ -94,7 +97,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         `Comment count threshold of ${this.inputs.maxNumberOfComments} exceeded, writing to artifact instead`
       );
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
-    } else if (netNewComments.length > this.inputs.commentBatchSize) {
+    } else {
       this.logger(
         `Writing comments in batches of ${this.inputs.commentBatchSize}`
       );
@@ -248,7 +251,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
           this.matchComment(existingComment, newComment)
         )
     );
-    this.logger("Resolved comments: " + resolvedComments.length);
+    this.logger("Resolved comments to delete: " + resolvedComments.length);
     await this.processCommentsInBatches(resolvedComments, "DELETE");
   }
 
