@@ -11,7 +11,7 @@
    limitations under the License.
  */
 
-import { getGithubFilePath, getScannerViolationType, logger } from "../common";
+import { getGithubFilePath, getScannerViolationType } from "../common";
 
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
@@ -56,8 +56,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     ) as Promise<T>;
   }
 
-  //     await octokit.request("POST /repos/{owner}/{repo}/issues/{issue_number}/comments", {
-
   /**
    * Delete a single GitHub comment
    * @param comment Comment to delete
@@ -76,28 +74,29 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    * Uses the octokit to post the comments to the PR.
    */
   async write() {
-    logger("Writing comments using GitHub REST API...");
+    this.logger("Writing comments using GitHub REST API...");
     const existingComments = await this.getExistingComments();
-    logger("Found " + existingComments.length + "existing comments");
+    this.logger("Found " + existingComments.length + "existing comments");
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
-    logger("Net new comments: " + JSON.stringify(netNewComments, null, 2));
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
-    logger("Writing comments: " + JSON.stringify(this.issues, null, 2));
+    this.logger("Writing comments: " + netNewComments.length);
     if (netNewComments.length > this.inputs.maxNumberOfComments) {
       // If the number of violations is higher than the developer-specified maximum,
       // then we'll write the violations to a file, attach that file, and write a single comment
       // referencing the attached file.
-      logger(
+      this.logger(
         `Comment count threshold of ${this.inputs.maxNumberOfComments} exceeded, writing to artifact instead`
       );
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
     } else if (netNewComments.length > this.inputs.commentBatchSize) {
-      logger(`Writing comments in batches of ${this.inputs.commentBatchSize}`);
+      this.logger(
+        `Writing comments in batches of ${this.inputs.commentBatchSize}`
+      );
       // 15 is a heuristic # of comments that can be written without hitting rate limits. this might require tweaking.
       // in this case, we'll write the comments in batches of 15, with a delay in between each batch.
       await this.writeCommentsInBatches(netNewComments);
@@ -356,5 +355,11 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
 | Type | ${violationType} |
 | Message| [${violation.message.trim()}](${violation.url}) |
 | File | [${filePath}](${getGithubFilePath(commit_id, filePath)}) |`;
+  }
+
+  logger(message: string) {
+    if (this.inputs.debug) {
+      console.debug("Logger says: " + message);
+    }
   }
 }
