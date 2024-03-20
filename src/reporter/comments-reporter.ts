@@ -88,7 +88,11 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
     this.logger("Writing " + netNewComments.length + " net new comments ");
-
+    if (netNewComments.length === 0) {
+      console.error(
+        "The scanner found unresolved issues that have already been identified."
+      );
+    }
     if (netNewComments.length > this.inputs.maxNumberOfComments) {
       // If the number of violations is higher than the developer-specified maximum,
       // then we'll write the violations to a file, attach that file, and write a single comment
