@@ -259,13 +259,14 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   private async getExistingComments() {
     let result = Array<GithubExistingComment>();
     try {
-      result = (
-        await this.performGithubRequest<GithubExistingComment[]>("GET")
-      ).filter(
+      result = await this.performGithubRequest<GithubExistingComment[]>("GET");
+      this.logger("Result of getExistingComments: " + result.length);
+      result = result.filter(
         (comment) =>
           comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
           comment.user.type === "Bot"
       );
+      this.logger("Filtered comments: " + result.length);
     } catch (error) {
       console.error(
         "Error when fetching existing comments: " +
