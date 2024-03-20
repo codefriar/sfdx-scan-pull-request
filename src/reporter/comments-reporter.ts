@@ -80,6 +80,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
+    this.logger("Deleting resolved comemts");
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       await this.deleteResolvedComments(this.issues, existingComments);
@@ -115,11 +116,20 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     comments: GithubComment[],
     action: "POST" | "DELETE"
   ) {
+    this.logger(
+      "Processing comments in batches: " +
+        comments.length +
+        " total comments. Batch size: " +
+        this.inputs.commentBatchSize +
+        " Total Number of Batches " +
+        comments.length / this.inputs.commentBatchSize
+    );
     for (
       let index = 0;
       index < comments.length;
       index += this.inputs.commentBatchSize
     ) {
+      this.logger("Processing batch " + index);
       const thisBatch = comments.slice(
         index,
         index + this.inputs.commentBatchSize
@@ -131,25 +141,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
           setTimeout(resolve, this.inputs.rateLimitWaitTime)
         ),
       ]);
+      this.logger("Batch processed");
     }
   }
-
-  // /**
-  //  * @description Writes a batch of comments to the PR
-  //  * @param thisBatch a sliced segment of the comments to write
-  //  * @private
-  //  */
-  // private async postCommentBatch(thisBatch: GithubComment[]) {
-  //   for (const comment of thisBatch) {
-  //     try {
-  //       await this.performGithubRequest("POST", comment);
-  //     } catch (error) {
-  //       console.error(
-  //         "Error when writing comments: " + JSON.stringify(error, null, 2)
-  //       );
-  //     }
-  //   }
-  // }
 
   private async processAPIBatch(
     thisBatch: GithubComment[],
@@ -254,8 +248,8 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
           this.matchComment(existingComment, newComment)
         )
     );
-
-    await this.processAPIBatch(resolvedComments, "DELETE");
+    this.logger("Resolved comments: " + resolvedComments.length);
+    await this.processCommentsInBatches(resolvedComments, "DELETE");
   }
 
   /**
