@@ -183,6 +183,12 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       console.log(
         "Artifact upload response: " + JSON.stringify(artifactResponse, null, 2)
       );
+    } catch (error) {
+      console.error(
+        "Error when uploading artifact: " + JSON.stringify(error, null, 2)
+      );
+    }
+    try {
       const comment = {
         body: `Too many violations to display in a single comment. See the attached artifact for details.`,
         commit_id: this.issues[0]?.commit_id,
