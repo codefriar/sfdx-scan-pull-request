@@ -37,5 +37,5 @@ inputs:
     description: "Number of comments to post in a single batch"
     default: "15"
 runs:
-  using: "node16"
+  using: "node20"
   main: "dist/index.js"
