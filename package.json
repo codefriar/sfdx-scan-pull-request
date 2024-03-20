@@ -31,6 +31,6 @@
     "test": "jest --coverage",
     "tsc": "tsc",
     "prettier": "prettier --write .",
-    "release": "npm run build && git add . && git commit -m 'build' && git tag -a \"build ${npm_config_tag}\" \"v${npm_config_tag}\" && git push --follow-tags"
+    "release": "npm run build && git add . && git commit -m 'build' && git tag -a -m \"build ${npm_config_tag}\" \"v${npm_config_tag}\" && git push --follow-tags"
   }
 }
