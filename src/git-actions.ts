@@ -35,7 +35,7 @@ export async function getDiffInPullRequest(
   });
   if (destination) {
     execSync(`git remote add -f destination ${destination}`);
-    execSync(`git remote update`);
+    execSync(`git remote update > /dev/null`);
   }
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
