@@ -34,7 +34,7 @@ export async function getDiffInPullRequest(
     headRef,
   });
   if (destination) {
-    execSync(`git remote add -f destination ${destination}`);
+    execSync(`git remote add -f destination ${destination} > /dev/null`);
     execSync(`git remote update > /dev/null`);
   }
   /**
