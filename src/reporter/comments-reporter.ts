@@ -77,11 +77,13 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     this.logger("Writing comments using GitHub REST API...");
     const existingComments = await this.getExistingComments();
     this.logger("Found " + existingComments.length + " existing comments");
+    this.logger(
+      "All Existing Comments: " + JSON.stringify(existingComments, null, 2)
+    );
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
     this.logger("Net new comments: " + netNewComments.length);
-    this.logger("Net new comments: " + JSON.stringify(netNewComments, null, 2));
     this.logger("Deleting resolved comemts");
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
