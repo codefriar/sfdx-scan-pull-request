@@ -86,11 +86,18 @@ export class SfCLI {
     try {
       const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
       console.log("Executing command: ", cliCommand);
-      result = (
-        JSON.parse(
-          execSync(cliCommand, { maxBuffer: 10485760 }).toString()
-        ) as SfdxCommandResult<T>
-      ).result;
+      const jsonPaylod = execSync(cliCommand, {
+        maxBuffer: 10485760,
+      }).toString();
+      console.log("Json Payload: " + jsonPaylod);
+      result = (JSON.parse(jsonPaylod) as SfdxCommandResult<T>).result;
+      console.log("Result: " + result);
+      //
+      // result = (
+      //   JSON.parse(
+      //     execSync(cliCommand, { maxBuffer: 10485760 }).toString()
+      //   ) as SfdxCommandResult<T>
+      // ).result;
     } catch (err) {
       throw err;
     }
@@ -109,7 +116,12 @@ export class SfCLI {
       )
       .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
     try {
-      return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
+      console.log("Executing Sf scanner on the command line");
+      const cliRunResults = await this.cli("scanner run", [
+        ...scannerCliArgs,
+        "--json",
+      ]);
+      return cliRunResults;
     } catch (err) {
       throw err;
     }
