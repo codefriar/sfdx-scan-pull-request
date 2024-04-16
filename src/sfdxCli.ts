@@ -30,10 +30,11 @@ export class SfCLI {
     }
     const inputContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
     const inputData: InputData = JSON.parse(inputContent);
-    console.log("Input Data: ", inputContent);
 
     const sarifContent = inputData.documents[0].document.document_content;
+    console.log("########\n SARIF CONTENT: \n", sarifContent, "\n########");
     const sarifJson: SarifDocument = JSON.parse(sarifContent);
+    console.log("########\n SARIF JSON: \n", sarifJson, "\n########");
 
     const findings: ScannerFinding[] = [];
     sarifJson.runs.forEach((run) => {
@@ -43,7 +44,7 @@ export class SfCLI {
       const engine = run.tool.driver.name;
 
       const fileViolations = new Map<string, ScannerViolation[]>();
-
+      console.log("Preparing to iterate over run results");
       run.results.forEach((result) => {
         const rule = rules.get(result.ruleId);
         const location = result.locations[0].physicalLocation;
@@ -78,7 +79,7 @@ export class SfCLI {
         findings.push(finding);
       });
     });
-
+    console.log("Findings: ", findings);
     return findings;
   }
 
