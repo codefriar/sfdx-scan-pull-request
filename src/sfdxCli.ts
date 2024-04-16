@@ -30,7 +30,7 @@ export class SfCLI {
     }
     const inputContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
     const inputData: InputData = JSON.parse(inputContent);
-    console.log("Input Data: ", inputData);
+    console.log("Input Data: ", inputContent);
 
     const sarifContent = inputData.documents[0].document.document_content;
     const sarifJson: SarifDocument = JSON.parse(sarifContent);

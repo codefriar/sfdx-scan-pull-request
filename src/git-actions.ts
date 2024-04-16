@@ -34,11 +34,12 @@ export async function getDiffInPullRequest(
     headRef,
   });
   if (destination) {
-    execSync(`git remote add -f destination ${destination} > /dev/null`);
+    execSync(`git remote add -f destination ${destination} 2>&1`);
     console.log("Calling git remote update");
-    execSync(`git remote update > /dev/null`);
+    execSync(`git remote update 2>&1`);
     console.log("Finished calling git remote update");
   }
+
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
