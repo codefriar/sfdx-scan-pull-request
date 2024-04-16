@@ -12,6 +12,117 @@
  */
 
 import { execSync } from "child_process";
+import fs from "fs";
+import * as path from "path";
+import { fileExists } from "./common";
+
+export class SfCLI {
+  private scannerFlags: ScannerFlags;
+
+  constructor(scannerFlags: ScannerFlags) {
+    this.scannerFlags = scannerFlags;
+  }
+
+  async scanFiles() {
+    await this.generateSarifOutputFile();
+    if (!fileExists(this.scannerFlags.outfile)) {
+      throw new Error("SARIF output file not found");
+    }
+    const inputContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
+    const inputData: InputData = JSON.parse(inputContent);
+
+    const sarifContent = inputData.documents[0].document.document_content;
+    const sarifJson: SarifDocument = JSON.parse(sarifContent);
+
+    const findings: ScannerFinding[] = [];
+    sarifJson.runs.forEach((run) => {
+      const rules = new Map(
+        run.tool.driver.rules.map((rule) => [rule.id, rule])
+      );
+      const engine = run.tool.driver.name;
+
+      const fileViolations = new Map<string, ScannerViolation[]>();
+
+      run.results.forEach((result) => {
+        const rule = rules.get(result.ruleId);
+        const location = result.locations[0].physicalLocation;
+        const fileName = path.normalize(location.artifactLocation.uri);
+
+        const violation: ScannerViolation = {
+          category: rule?.properties.category || "",
+          column: location.region.startColumn.toString(),
+          endColumn: location.region.endColumn?.toString() || "",
+          endLine: location.region.endLine?.toString() || "",
+          line: location.region.startLine.toString(),
+          message: result.message.text,
+          ruleName: result.ruleId,
+          severity: rule?.properties.severity || 0,
+          url: rule?.helpUri,
+        };
+
+        if (fileViolations.has(fileName)) {
+          fileViolations.get(fileName)!.push(violation);
+        } else {
+          fileViolations.set(fileName, [violation]);
+        }
+      });
+
+      fileViolations.forEach((violations, fileName) => {
+        const finding: ScannerFinding = {
+          fileName,
+          engine,
+          violations,
+        };
+
+        findings.push(finding);
+      });
+    });
+
+    return findings;
+  }
+
+  private async cli<T>(commandName: string, cliArgs: string[] = []) {
+    let result = null as T;
+    try {
+      const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
+      console.log("Executing command: ", cliCommand);
+      result = (
+        JSON.parse(
+          execSync(cliCommand, { maxBuffer: 10485760 }).toString()
+        ) as SfdxCommandResult<T>
+      ).result;
+    } catch (err) {
+      throw err;
+    }
+    return result;
+  }
+
+  private async generateSarifOutputFile() {
+    this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
+    const scannerCliArgs = (
+      Object.keys(this.scannerFlags) as Array<keyof ScannerFlags>
+    )
+      .map<string[]>((key) =>
+        this.scannerFlags[key]
+          ? ([`--${key}`, this.scannerFlags[key]] as string[])
+          : []
+      )
+      .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
+    try {
+      return await this.cli("sf scanner run", [...scannerCliArgs, "--json"]);
+    } catch (err) {
+      throw err;
+    }
+  }
+
+  async registerRule(path: string, language: string) {
+    return this.cli<ScannerFinding[] | string>("scanner rule add", [
+      `--path="${path}"`,
+      `--language="${language}"`,
+      "--json",
+    ]);
+  }
+}
 
 export type ScannerFinding = {
   fileName: string;
@@ -27,6 +138,9 @@ export type ScannerFlags = {
   pmdconfig?: string;
   target: string;
   tsConfig?: string;
+  exportSarif?: boolean;
+  format: string;
+  outfile: string;
 };
 
 export type ScannerViolation = {
@@ -41,48 +155,57 @@ export type ScannerViolation = {
   url?: string;
 };
 
+interface SarifResult {
+  ruleId: string;
+  message: { text: string };
+  locations: {
+    physicalLocation: {
+      artifactLocation: {
+        uri: string;
+      };
+      region: {
+        startLine: number;
+        startColumn: number;
+        endLine?: number;
+        endColumn?: number;
+      };
+    };
+  }[];
+}
+
+interface SarifRule {
+  id: string;
+  properties: { category: string; severity: number };
+  helpUri?: string;
+}
+
+interface SarifTool {
+  driver: {
+    name: string;
+    rules: SarifRule[];
+  };
+}
+
+interface SarifRun {
+  tool: SarifTool;
+  results: SarifResult[];
+}
+
+interface SarifDocument {
+  runs: SarifRun[];
+}
+
+interface InputData {
+  documents: {
+    document: {
+      document_content: string;
+    };
+  }[];
+}
+
 export type ScannerViolationType = "Error" | "Warning";
 
 type SfdxCommandResult<T> = {
   status: 1 | 0;
   result: T;
 };
-
-const cli = async <T>(commandName: string, cliArgs: string[] = []) => {
-  let result = null as T;
-  try {
-    const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-    result = (
-      JSON.parse(
-        execSync(cliCommand, { maxBuffer: 10485760 }).toString()
-      ) as SfdxCommandResult<T>
-    ).result;
-  } catch (err) {
-    throw err;
-  }
-  return result;
-};
-
-export async function scanFiles(scannerFlags: ScannerFlags) {
-  scannerFlags.target = `"` + scannerFlags.target + `"`;
-  const scannerCliArgs = (
-    Object.keys(scannerFlags) as Array<keyof ScannerFlags>
-  )
-    .map<string[]>((key) =>
-      scannerFlags[key] ? ([`--${key}`, scannerFlags[key]] as string[]) : []
-    )
-    .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-
-  return cli<ScannerFinding[] | string>("scanner:run", [
-    ...scannerCliArgs,
-    "--json",
-  ]);
-}
-
-export async function registerRule(path: string, language: string) {
-  return cli<ScannerFinding[] | string>("scanner:rule:add", [
-    `--path="${path}"`,
-    `--language="${language}"`,
-    "--json",
-  ]);
-}

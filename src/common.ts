@@ -1,4 +1,5 @@
 import { ScannerViolation, ScannerViolationType } from "./sfdxCli";
+import fs from "fs";
 
 export type PluginInputs = {
   severityThreshold: number;
@@ -10,8 +11,19 @@ export type PluginInputs = {
   deleteResolvedComments: boolean;
   reportMode: string | "comments" | "check-runs";
   target: string;
+  runFlowScanner: boolean;
   debug: boolean;
+  exportSarif: boolean;
 };
+
+export function fileExists(filePath: string) {
+  try {
+    fs.accessSync(filePath, fs.constants.F_OK);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
 
 export function getScannerViolationType(
   inputs: PluginInputs,
