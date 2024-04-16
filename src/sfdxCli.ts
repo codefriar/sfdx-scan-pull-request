@@ -109,7 +109,7 @@ export class SfCLI {
       )
       .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
     try {
-      return await this.cli("sf scanner run", [...scannerCliArgs, "--json"]);
+      return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
     } catch (err) {
       throw err;
     }
