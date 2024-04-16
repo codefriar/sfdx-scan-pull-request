@@ -90,9 +90,9 @@ export class SfCLI {
       const jsonPaylod = execSync(cliCommand, {
         maxBuffer: 10485760,
       }).toString();
-      console.log("Json Payload: " + jsonPaylod);
+      // console.log("Json Payload: " + jsonPaylod);
       result = (JSON.parse(jsonPaylod) as SfdxCommandResult<T>).result;
-      console.log("Result: " + result);
+      // console.log("Result: " + result);
       //
       // result = (
       //   JSON.parse(
