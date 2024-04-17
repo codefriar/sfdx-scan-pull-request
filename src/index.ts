@@ -145,6 +145,7 @@ class SfScannerPullRequest {
 
     for (let finding of findings) {
       const filePath = finding.fileName.replace(process.cwd() + "/", "");
+      console.log("Processing findings for file: ", filePath);
       const relevantLines =
         filePathToChangedLines.get(filePath) || new Set<number>();
       for (let violation of finding.violations) {

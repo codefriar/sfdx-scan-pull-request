@@ -46,7 +46,6 @@ export class SfCLI {
       const engine = run.tool.driver.name;
 
       const fileViolations = new Map<string, ScannerViolation[]>();
-      console.log("Preparing to iterate over run results");
       run.results.forEach((result) => {
         const rule = rules.get(result.ruleId);
         const location = result.locations[0].physicalLocation;
@@ -81,7 +80,7 @@ export class SfCLI {
         findings.push(finding);
       });
     });
-    console.log("Findings: ", findings);
+    console.log("Findings: ", JSON.stringify(findings, null, 2));
     return findings;
   }
 
@@ -94,11 +93,6 @@ export class SfCLI {
         maxBuffer: 10485760,
       }).toString();
       result = (JSON.parse(jsonPaylod) as SfdxCommandResult<T>).result;
-      // result = (
-      //   JSON.parse(
-      //     execSync(cliCommand, { maxBuffer: 10485760 }).toString()
-      //   ) as SfdxCommandResult<T>
-      // ).result;
     } catch (err) {
       throw err;
     }
