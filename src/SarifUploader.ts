@@ -1,5 +1,5 @@
 import * as core from "@actions/core";
-import { ScannerFlags } from "./sfdxCli";
+import { ScannerFlags } from "./sfdxCli.types";
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
 import { fileExists } from "./common";

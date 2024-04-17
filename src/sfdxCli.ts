@@ -15,6 +15,13 @@ import { execSync } from "child_process";
 import fs from "fs";
 import * as path from "path";
 import { fileExists } from "./common";
+import {
+  ScannerFinding,
+  ScannerFlags,
+  ScannerViolation,
+  SfdxCommandResult,
+} from "./sfdxCli.types";
+import { SarifDocument } from "./sarif.types";
 
 export class SfCLI {
   private scannerFlags: ScannerFlags;
@@ -28,17 +35,8 @@ export class SfCLI {
     if (!fileExists(this.scannerFlags.outfile)) {
       throw new Error("SARIF output file not found");
     }
-    const inputContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
-    const inputData: InputData = JSON.parse(inputContent);
-    console.log(
-      "########\n INPUT DATA: \n",
-      JSON.stringify(inputData, null, 2),
-      "\n########"
-    );
-    const sarifContent = inputData.documents[0].document.document_content;
-    console.log("########\n SARIF CONTENT: \n", sarifContent, "\n########");
-    const sarifJson: SarifDocument = JSON.parse(sarifContent);
-    console.log("########\n SARIF JSON: \n", sarifJson, "\n########");
+    const sarifContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
+    const sarifJson: SarifDocument = JSON.parse(sarifContent) as SarifDocument;
 
     const findings: ScannerFinding[] = [];
     sarifJson.runs.forEach((run) => {
@@ -95,10 +93,7 @@ export class SfCLI {
       const jsonPaylod = execSync(cliCommand, {
         maxBuffer: 10485760,
       }).toString();
-      // console.log("Json Payload: " + jsonPaylod);
       result = (JSON.parse(jsonPaylod) as SfdxCommandResult<T>).result;
-      // console.log("Result: " + result);
-      //
       // result = (
       //   JSON.parse(
       //     execSync(cliCommand, { maxBuffer: 10485760 }).toString()
@@ -142,89 +137,3 @@ export class SfCLI {
     ]);
   }
 }
-
-export type ScannerFinding = {
-  fileName: string;
-  engine: string;
-  violations: ScannerViolation[];
-};
-
-export type ScannerFlags = {
-  category?: string;
-  engine?: string;
-  env?: string;
-  eslintconfig?: string;
-  pmdconfig?: string;
-  target: string;
-  tsConfig?: string;
-  exportSarif?: boolean;
-  format: string;
-  outfile: string;
-};
-
-export type ScannerViolation = {
-  category: string;
-  column: string;
-  endColumn: string;
-  endLine: string;
-  line: string;
-  message: string;
-  ruleName: string;
-  severity: number;
-  url?: string;
-};
-
-interface SarifResult {
-  ruleId: string;
-  message: { text: string };
-  locations: {
-    physicalLocation: {
-      artifactLocation: {
-        uri: string;
-      };
-      region: {
-        startLine: number;
-        startColumn: number;
-        endLine?: number;
-        endColumn?: number;
-      };
-    };
-  }[];
-}
-
-interface SarifRule {
-  id: string;
-  properties: { category: string; severity: number };
-  helpUri?: string;
-}
-
-interface SarifTool {
-  driver: {
-    name: string;
-    rules: SarifRule[];
-  };
-}
-
-interface SarifRun {
-  tool: SarifTool;
-  results: SarifResult[];
-}
-
-interface SarifDocument {
-  runs: SarifRun[];
-}
-
-interface InputData {
-  documents: {
-    document: {
-      document_content: string;
-    };
-  }[];
-}
-
-export type ScannerViolationType = "Error" | "Warning";
-
-type SfdxCommandResult<T> = {
-  status: 1 | 0;
-  result: T;
-};

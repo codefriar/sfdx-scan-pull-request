@@ -20,7 +20,7 @@ import {
   GithubComment,
   GithubExistingComment,
 } from "./reporter.types";
-import { ScannerViolation } from "../sfdxCli";
+import { ScannerViolation } from "../sfdxCli.types";
 import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
 

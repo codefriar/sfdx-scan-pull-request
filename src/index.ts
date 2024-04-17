@@ -16,18 +16,18 @@ import { context } from "@actions/github";
 
 import { getDiffInPullRequest, GithubPullRequest } from "./git-actions";
 
-import {
-  SfCLI,
-  ScannerFlags,
-  ScannerFinding,
-  ScannerViolation,
-} from "./sfdxCli";
+import { SfCLI } from "./sfdxCli";
 
 import { PluginInputs } from "./common";
 import { CommentsReporter } from "./reporter/comments-reporter";
 import { AnnotationsReporter } from "./reporter/annoations-reporter";
 import { Reporter, ReporterProps } from "./reporter/reporter.types";
 import SarifUploader from "./SarifUploader";
+import {
+  ScannerFinding,
+  ScannerFlags,
+  ScannerViolation,
+} from "./sfdxCli.types";
 
 interface ExecSyncError {
   status: string;

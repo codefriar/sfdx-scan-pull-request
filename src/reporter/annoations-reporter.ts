@@ -19,7 +19,7 @@ import {
   GithubAnnotation,
   GithubCheckRun,
 } from "./reporter.types";
-import { ScannerViolation } from "../sfdxCli";
+import { ScannerViolation } from "../sfdxCli.types";
 
 export const ERROR = "Error";
 export const RIGHT = "RIGHT";

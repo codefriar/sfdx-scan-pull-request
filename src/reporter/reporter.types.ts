@@ -12,7 +12,7 @@
  */
 
 import { PluginInputs } from "../common";
-import { ScannerViolation } from "../sfdxCli";
+import { ScannerViolation } from "../sfdxCli.types";
 import { Context } from "@actions/github/lib/context";
 import { setFailed } from "@actions/core";
 

@@ -1,5 +1,5 @@
-import { ScannerViolation, ScannerViolationType } from "./sfdxCli";
 import fs from "fs";
+import { ScannerViolation, ScannerViolationType } from "./sfdxCli.types";
 
 export type PluginInputs = {
   severityThreshold: number;
