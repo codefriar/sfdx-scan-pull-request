@@ -143,12 +143,11 @@ class SfScannerPullRequest {
       "Filtering the findings to just the lines which are part of the context..."
     );
 
+    for (let key of filePathToChangedLines.keys()) {
+      console.log("#### Key: " + key);
+    }
     for (let finding of findings) {
       const filePath = finding.fileName.replace(process.cwd() + "/", "");
-      console.log(
-        "##### Keys for filePathToChangedLines: " +
-          filePathToChangedLines.keys()
-      );
       console.log(
         "file path to changed lines: " +
           filePathToChangedLines.get(filePath) +
