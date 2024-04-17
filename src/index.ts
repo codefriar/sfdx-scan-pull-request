@@ -251,7 +251,8 @@ class SfScannerPullRequest {
           this.pullRequest?.head?.ref,
           this.pullRequest?.base?.repo?.clone_url
         );
-    console.log("#### " + JSON.stringify(this.inputs, null, 2));
+    console.log("#### inputs " + JSON.stringify(this.inputs, null, 2));
+    console.log("#### context " + JSON.stringify(context, null, 2));
     console.log(
       "################## filePathToChangedLines: " +
         JSON.stringify(filePathToChangedLines, null, 2)
