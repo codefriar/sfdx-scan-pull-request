@@ -252,7 +252,8 @@ class SfScannerPullRequest {
           this.pullRequest?.base?.repo?.clone_url
         );
     console.log(
-      "################## filePathToChangedLines: " + filePathToChangedLines
+      "################## filePathToChangedLines: " +
+        JSON.stringify(filePathToChangedLines, null, 2)
     );
     let filesToScan = this.getFilesToScan(
       filePathToChangedLines,
