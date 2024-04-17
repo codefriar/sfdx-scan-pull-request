@@ -37,10 +37,10 @@ interface ExecSyncError {
 }
 
 class SfScannerPullRequest {
-  private scannerFlags: ScannerFlags;
-  private inputs: PluginInputs;
+  private readonly scannerFlags: ScannerFlags;
+  private readonly inputs: PluginInputs;
   private reporter: Reporter;
-  private pullRequest: GithubPullRequest | undefined;
+  private readonly pullRequest: GithubPullRequest | undefined;
   private sfCli: SfCLI;
 
   /**
@@ -251,6 +251,7 @@ class SfScannerPullRequest {
           this.pullRequest?.head?.ref,
           this.pullRequest?.base?.repo?.clone_url
         );
+    console.log("#### " + JSON.stringify(this.inputs, null, 2));
     console.log(
       "################## filePathToChangedLines: " +
         JSON.stringify(filePathToChangedLines, null, 2)
