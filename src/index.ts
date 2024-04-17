@@ -145,7 +145,10 @@ class SfScannerPullRequest {
 
     for (let finding of findings) {
       const filePath = finding.fileName.replace(process.cwd() + "/", "");
-      console.log("Processing findings for file: ", filePath);
+      console.log(
+        "##### Keys for filePathToChangedLines: " +
+          filePathToChangedLines.keys()
+      );
       console.log(
         "file path to changed lines: " +
           filePathToChangedLines.get(filePath) +
@@ -255,12 +258,6 @@ class SfScannerPullRequest {
           this.pullRequest?.head?.ref,
           this.pullRequest?.base?.repo?.clone_url
         );
-    // console.log("#### inputs " + JSON.stringify(this.inputs, null, 2));
-    // console.log("#### context " + JSON.stringify(context, null, 2));
-    // console.log(
-    //   "################## filePathToChangedLines: " +
-    //     JSON.stringify(filePathToChangedLines, null, 2)
-    // );
     let filesToScan = this.getFilesToScan(
       filePathToChangedLines,
       this.inputs.target

@@ -49,20 +49,10 @@ export async function getDiffInPullRequest(
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
    */
-  console.log("#### starting git diff");
-  console.log(
-    `git diff command: git diff "destination/${baseRef}"..."origin/${headRef}"`
-  );
-  execSync(`git diff "destination/${baseRef}"..."origin/${headRef}"`, {
-    maxBuffer: 1024 * 1024 * 1024,
-  });
-  console.log("#### finished git diff");
   execSync(
     `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
   );
-  console.log("Diff output::");
 
-  execSync(`ls -lah diffBetweenCurrentAndParentBranch.txt; cat ${DIFF_OUTPUT}`);
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToChangedLines = new Map<string, Set<number>>();
   for (let file of files) {
@@ -78,6 +68,5 @@ export async function getDiffInPullRequest(
       filePathToChangedLines.set(file.to, changedLines);
     }
   }
-  console.log("filePathToChangedLines output:", filePathToChangedLines);
   return filePathToChangedLines;
 }
