@@ -75,6 +75,11 @@ class SfScannerPullRequest {
       exportSarif: getInput("export-sarif") === "true",
     };
 
+    console.log("Constructor set Target to: " + this.inputs.target);
+    console.log(
+      "Context.payload.pullRequest is: " + context?.payload?.pull_request
+    );
+
     this.pullRequest = context?.payload?.pull_request;
     this.validateContext(this.pullRequest, this.inputs.target);
 
