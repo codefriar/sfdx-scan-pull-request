@@ -62,7 +62,7 @@ export async function getDiffInPullRequest(
   );
   console.log("Diff output::");
 
-  execSync(`cat ${DIFF_OUTPUT}`);
+  execSync(`ls -lah diffBetweenCurrentAndParentBranch.txt; cat ${DIFF_OUTPUT}`);
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToChangedLines = new Map<string, Set<number>>();
   for (let file of files) {
