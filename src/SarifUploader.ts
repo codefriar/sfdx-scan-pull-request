@@ -15,6 +15,7 @@ class SarifUploader {
   }
 
   async upload(): Promise<void> {
+    console.log("Uploading SARIF report ...");
     try {
       let base64Data = await this.zipAndEncodeSarif();
 
