@@ -33,7 +33,7 @@ export async function getDiffInPullRequest(
     baseRef,
     headRef,
   });
-  console.log("Destination:", destination);
+  console.log("Destination: ", destination);
   if (destination) {
     execSync(`git remote add -f destination ${destination} 2>&1`);
     console.log("Calling git remote update ");
@@ -58,6 +58,7 @@ export async function getDiffInPullRequest(
     `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
   );
   console.log("Diff output::");
+
   execSync(`cat ${DIFF_OUTPUT}`);
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToChangedLines = new Map<string, Set<number>>();
