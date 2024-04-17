@@ -80,7 +80,6 @@ export class SfCLI {
         findings.push(finding);
       });
     });
-    console.log("Findings: ", JSON.stringify(findings, null, 2));
     return findings;
   }
 
