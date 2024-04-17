@@ -40,6 +40,10 @@ export async function getDiffInPullRequest(
     console.log("Finished calling git remote update");
   }
 
+  console.log(
+    "Fetching diff between base and head ref ..." + baseRef + " " + headRef
+  );
+
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
