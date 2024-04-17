@@ -50,6 +50,9 @@ export async function getDiffInPullRequest(
    * called from within action. Writing to file, then reading avoids this error.
    */
   console.log("#### starting git diff");
+  console.log(
+    `git diff command: git diff "destination/${baseRef}"..."origin/${headRef}"`
+  );
   execSync(`git diff "destination/${baseRef}"..."origin/${headRef}"`, {
     maxBuffer: 1024 * 1024 * 1024,
   });
