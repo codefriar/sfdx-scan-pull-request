@@ -149,6 +149,11 @@ class SfScannerPullRequest {
     for (let finding of findings) {
       const filePath = finding.fileName.replace(process.cwd() + "/", "");
       console.log(
+        `filePathToChangedLines has key ${filePath}: ${filePathToChangedLines.has(
+          filePath
+        )}`
+      );
+      console.log(
         "file path to changed lines: " +
           filePathToChangedLines.get(filePath) +
           " for file: " +
