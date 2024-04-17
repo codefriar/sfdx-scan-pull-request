@@ -35,9 +35,9 @@ export async function getDiffInPullRequest(
   });
   console.log("Destination:", destination);
   if (destination) {
-    execSync(`git remote add -f destination ${destination} `);
-    console.log("Calling git remote update");
-    execSync(`git remote update `);
+    execSync(`git remote add -f destination ${destination} 2>&1`);
+    console.log("Calling git remote update ");
+    execSync(`git remote update 2>&1`);
     console.log("Finished calling git remote update");
   }
 
