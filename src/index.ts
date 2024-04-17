@@ -77,7 +77,8 @@ class SfScannerPullRequest {
 
     console.log("Constructor set Target to: " + this.inputs.target);
     console.log(
-      "Context.payload.pullRequest is: " + context?.payload?.pull_request
+      "Context.payload.pullRequest is: " +
+        JSON.stringify(context?.payload?.pull_request, null, 2)
     );
 
     this.pullRequest = context?.payload?.pull_request;
@@ -256,12 +257,12 @@ class SfScannerPullRequest {
           this.pullRequest?.head?.ref,
           this.pullRequest?.base?.repo?.clone_url
         );
-    console.log("#### inputs " + JSON.stringify(this.inputs, null, 2));
-    console.log("#### context " + JSON.stringify(context, null, 2));
-    console.log(
-      "################## filePathToChangedLines: " +
-        JSON.stringify(filePathToChangedLines, null, 2)
-    );
+    // console.log("#### inputs " + JSON.stringify(this.inputs, null, 2));
+    // console.log("#### context " + JSON.stringify(context, null, 2));
+    // console.log(
+    //   "################## filePathToChangedLines: " +
+    //     JSON.stringify(filePathToChangedLines, null, 2)
+    // );
     let filesToScan = this.getFilesToScan(
       filePathToChangedLines,
       this.inputs.target
