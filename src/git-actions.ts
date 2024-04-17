@@ -48,6 +48,9 @@ export async function getDiffInPullRequest(
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
    */
+  execSync(`git diff "destination/${baseRef}"..."origin/${headRef}"`, {
+    maxBuffer: 1024 * 1024 * 1024,
+  });
   execSync(
     `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
   );
