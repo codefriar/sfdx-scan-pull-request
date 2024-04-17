@@ -23,14 +23,26 @@ import {
 } from "./sfdxCli.types";
 import { SarifDocument } from "./sarif.types";
 
-export class SfCLI {
+/**
+ * @description This class is responsible for interfacing with the Salesforce CLI.
+ */
+export default class SfCLI {
   private scannerFlags: ScannerFlags;
 
+  /**
+   * @description Constructor for the SfCLI class
+   * @param scannerFlags the command line flags to pass to the scanner.
+   */
   constructor(scannerFlags: ScannerFlags) {
     this.scannerFlags = scannerFlags;
   }
 
-  async scanFiles() {
+  /**
+   * @description Scans the files in the target directory and returns the findings. This is the method where
+   * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
+   * the findings in a format that can be easily consumed by the reporter.
+   */
+  async getFindingsForFiles() {
     await this.generateSarifOutputFile();
     if (!fileExists(this.scannerFlags.outfile)) {
       throw new Error("SARIF output file not found");
@@ -83,11 +95,15 @@ export class SfCLI {
     return findings;
   }
 
+  /**
+   * @description Executes a sfdx command on the command line
+   * @param commandName this is the 'topic' (namespace) and 'command' (action) to execute. ie: 'scanner run'
+   * @param cliArgs an array of strings to pass as arguments to the command
+   */
   private async cli<T>(commandName: string, cliArgs: string[] = []) {
     let result = null as T;
     try {
       const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-      console.log("Executing command: ", cliCommand);
       const jsonPaylod = execSync(cliCommand, {
         maxBuffer: 10485760,
       }).toString();
@@ -98,6 +114,11 @@ export class SfCLI {
     return result;
   }
 
+  /**
+   * @description uses the sf scanner to generate a .sarif file containing the scan results.
+   * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
+   * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
+   */
   private async generateSarifOutputFile() {
     this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
     const scannerCliArgs = (
@@ -111,17 +132,17 @@ export class SfCLI {
       .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
     try {
       console.log("Executing Sf scanner on the command line");
-      const cliRunResults = await this.cli("scanner run", [
-        ...scannerCliArgs,
-        "--json",
-      ]);
-      console.log("cliRunResults: ", cliRunResults);
-      return cliRunResults;
+      return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
     } catch (err) {
       throw err;
     }
   }
 
+  /**
+   * @description Registers a new rule with the scanner
+   * @param path The path to the rule's .jar file
+   * @param language the language the rule is written for ie: apex, html, etc.
+   */
   async registerRule(path: string, language: string) {
     return this.cli<ScannerFinding[] | string>("scanner rule add", [
       `--path="${path}"`,

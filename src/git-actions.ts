@@ -29,21 +29,10 @@ export async function getDiffInPullRequest(
   headRef: string,
   destination?: string
 ) {
-  console.log("Getting difference within the pull request ...", {
-    baseRef,
-    headRef,
-  });
-  console.log("Destination: ", destination);
   if (destination) {
     execSync(`git remote add -f destination ${destination} 2>&1`);
-    console.log("Calling git remote update ");
     execSync(`git remote update 2>&1`);
-    console.log("Finished calling git remote update");
   }
-
-  console.log(
-    "Fetching diff between base and head ref ..." + baseRef + " " + headRef
-  );
 
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
