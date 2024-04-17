@@ -78,6 +78,6 @@ export async function getDiffInPullRequest(
       filePathToChangedLines.set(file.to, changedLines);
     }
   }
-  console.log("filePathToChangedLines output::", filePathToChangedLines);
+  console.log("filePathToChangedLines output:", filePathToChangedLines);
   return filePathToChangedLines;
 }
