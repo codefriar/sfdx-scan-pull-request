@@ -219,6 +219,10 @@ class SfScannerPullRequest {
         pathsWithChangedLines.push(filePath);
       }
     }
+    console.log(
+      "#### pathsWithChangedLines: " +
+        JSON.stringify(pathsWithChangedLines, null, 2)
+    );
     return pathsWithChangedLines;
   }
 
