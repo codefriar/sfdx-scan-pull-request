@@ -47,6 +47,7 @@ export async function getDiffInPullRequest(
   execSync(
     `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
   );
+  console.log("Diff output::");
   execSync(`cat ${DIFF_OUTPUT}`);
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToChangedLines = new Map<string, Set<number>>();
