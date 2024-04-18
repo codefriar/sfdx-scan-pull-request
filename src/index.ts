@@ -19,8 +19,10 @@ import SfScannerPullRequest from "./SfScannerPullRequest";
  * the workflow.
  */
 async function main(): Promise<void> {
+  console.log("#### starting main function ####");
   let scanner = new SfScannerPullRequest();
-  await scanner.workflow();
+  console.log("#### created scanner, starting workflow ####");
+  return await scanner.workflow();
 }
 
 /**
