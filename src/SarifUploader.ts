@@ -23,7 +23,7 @@ export default class SarifUploader {
   async upload(): Promise<void> {
     console.log("Uploading SARIF report ...");
     try {
-      let base64Data = await this.exec(this.sarifPath);
+      let base64Data = await this.execShellCmds(this.sarifPath);
 
       const pullRequestNumber = context.payload.pull_request?.number;
       const ref = `refs/pull/${pullRequestNumber}/head`;
@@ -54,7 +54,7 @@ export default class SarifUploader {
    * @description Executes the gzip and base64 commands to compress and encode the SARIF report.
    * @param sarifPath path to the SARIF report.
    */
-  private async exec(sarifPath: string): Promise<string> {
+  private async execShellCmds(sarifPath: string): Promise<string> {
     return new Promise((resolve, reject) => {
       const gzipCommand = spawn("gzip", ["-c", sarifPath]);
       const base64Command = spawn("base64", ["-w0"]);
