@@ -13,7 +13,6 @@
 
 import { getGithubFilePath, getScannerViolationType } from "../common";
 
-import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
 import {
   BaseReporter,
@@ -40,7 +39,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     method: "POST" | "GET",
     optionalBody?: GithubComment
   ) {
-    const octokit = new Octokit();
     const owner = context.repo.owner;
     const repo = context.repo.repo;
     const prNumber = context.payload.pull_request?.number;
@@ -49,10 +47,11 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`
     }/comments`;
 
+    // @ts-ignore
     return (
       method === "POST"
-        ? octokit.request(endpoint, optionalBody)
-        : octokit.paginate(endpoint)
+        ? this.octokit.request(endpoint, optionalBody)
+        : this.octokit.paginate(endpoint)
     ) as Promise<T>;
   }
 
@@ -62,11 +61,10 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    * @private
    */
   private async performGithubDeleteRequest(comment: GithubExistingComment) {
-    const octokit = new Octokit();
     const owner = context.repo.owner;
     const repo = context.repo.repo;
     const endpoint = `DELETE /repos/${owner}/${repo}/pulls/comments/${comment.id}`;
-    await octokit.request(endpoint);
+    await this.octokit.request(endpoint);
   }
 
   /**
@@ -76,24 +74,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   async write() {
     this.logger("Writing comments using GitHub REST API...");
     const existingComments = await this.getExistingComments();
-    this.logger("Found " + existingComments.length + " existing comments");
-    this.logger("Printing issues, because debug is true");
-    existingComments.forEach((issue) => {
-      this.logger(issue.body);
-    });
+
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
-    this.logger("Net new comments: " + netNewComments.length);
-    netNewComments.forEach((issue) => {
-      this.logger(issue.body);
-    });
+
     this.logger("Deleting resolved comments");
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
-    this.logger("Writing " + netNewComments.length + " net new comments ");
     if (netNewComments.length === 0) {
       console.error(
         "The scanner found unresolved issues that have already been identified."
@@ -108,12 +98,15 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       );
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
     } else {
-      this.logger(
-        `Writing comments in batches of ${this.inputs.commentBatchSize}`
-      );
-      // 15 is a heuristic # of comments that can be written without hitting rate limits. this might require tweaking.
-      // in this case, we'll write the comments in batches of 15, with a delay in between each batch.
-      await this.processCommentsInBatches(netNewComments, "POST");
+      for (let comment of netNewComments) {
+        try {
+          await this.performGithubRequest("POST", comment);
+        } catch (error) {
+          console.error(
+            "Error when writing comments: " + JSON.stringify(error, null, 2)
+          );
+        }
+      }
     }
 
     this.checkHasHaltingError();
@@ -229,7 +222,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     }
     try {
       const comment = {
-        body: `Too many violations to display in a single comment. See the attached artifact for details.`,
+        body: `sf scanner run found too many violations and was unable to upload them all as individual comments. Instead, all findings have been written to this PR as an artifact. See the attached artifact for details.`,
         commit_id: this.issues[0]?.commit_id,
         path: this.issues[0]?.path,
         line: 1,
@@ -279,7 +272,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
           comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
           comment.user.type === "Bot"
       );
-      this.logger("Filtered comments: " + result.length);
     } catch (error) {
       console.error(
         "Error when fetching existing comments: " +

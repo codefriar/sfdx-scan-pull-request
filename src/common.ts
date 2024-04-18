@@ -8,6 +8,7 @@ export type PluginInputs = {
   maxNumberOfComments: number;
   commentBatchSize: number;
   rateLimitWaitTime: number;
+  rateLimitRetries: number;
   deleteResolvedComments: boolean;
   reportMode: string | "comments" | "check-runs";
   target: string;

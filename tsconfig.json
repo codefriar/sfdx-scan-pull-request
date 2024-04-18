@@ -1,15 +1,22 @@
 {
   "compilerOptions": {
+    "lib": ["es2023"],
     "esModuleInterop": true,
-    "module": "commonjs",
+    "declaration": true,
+    "module": "node16",
+    "moduleResolution": "node16",
     "noImplicitAny": true,
     "outDir": "./lib",
     "rootDir": "./src",
     "strict": true,
     "skipLibCheck": true,
-    "target": "es6",
+    "sourceMap": true,
+//    "target": "es6",
     "noUnusedLocals": true,
-    "noUnusedParameters": true
+    "noUnusedParameters": true,
+    "target": "es2022",
+    "resolveJsonModule": true,
+//    "verbatimModuleSyntax": true
   },
   "include": ["src/*.ts"],
   "exclude": ["tests/**", "node_modules/**"]

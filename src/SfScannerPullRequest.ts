@@ -51,6 +51,7 @@ export default class SfScannerPullRequest {
       customPmdRules: getInput("custom-pmd-rules"),
       maxNumberOfComments: parseInt(getInput("max-number-of-comments")) || 100, // default of 100 comments
       rateLimitWaitTime: parseInt(getInput("rate-limit-wait-time")) || 60000, // default of 1 minute
+      rateLimitRetries: parseInt(getInput("rate-limit-retries")) || 5, // default of 5 retries
       commentBatchSize: parseInt(getInput("comment-batch-size")) || 15, // default of 15 comments
       severityThreshold: this.validateThresholdInput(),
       strictlyEnforcedRules: getInput("strictly-enforced-rules"),
@@ -274,7 +275,7 @@ export default class SfScannerPullRequest {
     }
 
     if (this.inputs.exportSarif) {
-      await new SarifUploader(this.scannerFlags).upload();
+      await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
     }
   }
 }
