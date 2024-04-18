@@ -1,5 +1,6 @@
 {
   "name": "sfdx-scan-pull-request",
+  "type": "module",
   "dependencies": {
     "@actions/artifact": "^2.1.4",
     "@actions/core": "^1.10.0",

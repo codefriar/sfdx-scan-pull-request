@@ -14,41 +14,57 @@
 import { PluginInputs } from "../common";
 import { ScannerViolation } from "../sfdxCli.types";
 import { Context } from "@actions/github/lib/context";
-import { setFailed } from "@actions/core";
 import { Octokit } from "@octokit/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { retry } from "@octokit/plugin-retry";
-import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { paginateRest, PaginateInterface } from "@octokit/plugin-paginate-rest";
 import { legacyRestEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
 import { createActionAuth } from "@octokit/auth-action";
+import { RequestError } from "@octokit/request-error";
 
-const MyOctokit = Octokit.plugin(
-  throttling,
-  paginateRest,
-  legacyRestEndpointMethods,
-  retry
-).defaults({
-  throttle: {
-    onRateLimit: (retryAfter, options) => {
-      console.warn(
-        `Request quota exhausted for request ${options.method} ${options.url}. Retrying after ${retryAfter} seconds!`
-      );
-      return true;
-    },
-    onSecondaryRateLimit: (retryAfter, options) => {
-      console.warn(
-        `Secondary rate limit detected for request ${options.method} ${options.url}`
-      );
-      if (options.request.retryCount <= 5) {
-        console.log(`Retrying after ${retryAfter} seconds!`);
+export type CustomOctokitWithPlugins = Octokit & {
+  paginate: PaginateInterface;
+} & {
+  legacyRestEndpointMethods: {
+    retry: {
+      retryRequest: (
+        error: RequestError,
+        retries: number,
+        retryAfter: number
+      ) => RequestError;
+    };
+  };
+};
+
+export function getCustomOctokitInstance(): CustomOctokitWithPlugins {
+  return Octokit.plugin(
+    throttling,
+    paginateRest,
+    legacyRestEndpointMethods,
+    retry
+  ).defaults({
+    throttle: {
+      onRateLimit: (retryAfter, options) => {
+        console.warn(
+          `Request quota exhausted for request ${options.method} ${options.url}. Retrying after ${retryAfter} seconds!`
+        );
         return true;
-      }
-      return false;
+      },
+      onSecondaryRateLimit: (retryAfter, options) => {
+        console.warn(
+          `Secondary rate limit detected for request ${options.method} ${options.url}`
+        );
+        if (options.request.retryCount <= 5) {
+          console.log(`Retrying after ${retryAfter} seconds!`);
+          return true;
+        }
+        return false;
+      },
     },
-  },
-  authStrategy: createActionAuth,
-  userAgent: `my-octokit-action/v1.2.3`,
-});
+    authStrategy: createActionAuth,
+    userAgent: `my-octokit-action/v1.2.3`,
+  }) as unknown as CustomOctokitWithPlugins;
+}
 
 export type GithubCheckRun = {
   name: string;
@@ -113,67 +129,3 @@ export interface Reporter {
 }
 
 type GithubCommentSide = "RIGHT";
-
-// function buildDefaults(options: OctokitOptions): OctokitOptions {
-//   return {
-//     authStrategy: createActionAuth,
-//     baseUrl: process.env["GITHUB_API_URL"] || "https://api.github.com",
-//     userAgent: `octokit-action.js/${VERSION}`,
-//     ...options,
-//     request: {
-//       fetch: customFetch,
-//       ...options.request,
-//     },
-//   };
-// });
-
-export abstract class BaseReporter<T> implements Reporter {
-  private memoizedOctokit: Octokit | null = null;
-  protected hasHaltingError;
-  protected inputs: PluginInputs;
-  protected issues: T[];
-  protected context: Context;
-  constructor({ context, inputs }: ReporterProps) {
-    this.hasHaltingError = false;
-    this.issues = [];
-    this.context = context;
-    this.inputs = inputs;
-  }
-
-  protected get octokit(): Octokit {
-    if (this.memoizedOctokit === null) {
-      // Compute the value if it hasn't been memoized yet
-      this.memoizedOctokit = this.getMemoizedOctokit();
-    }
-    return this.memoizedOctokit;
-  }
-
-  /**
-   * @description This is a workaround for octokit/actions not supporting additional plugins.
-   * octokit/actions is octokit/core with paginateRest and legacyRestEndpointMethods plugins.
-   * This custom version includes the throttling plugin.
-   */
-  private getMemoizedOctokit(): Octokit {
-    return new MyOctokit();
-  }
-
-  write(): void {
-    throw new Error("Method not implemented.");
-  }
-
-  translateViolationToReport(
-    _filePath: string,
-    _violation: ScannerViolation,
-    _engine: string
-  ): void {
-    throw new Error("Method not implemented.");
-  }
-
-  checkHasHaltingError() {
-    if (this.hasHaltingError) {
-      setFailed(
-        "One or more errors have been identified within the structure of the code that will need to be resolved before continuing."
-      );
-    }
-  }
-}

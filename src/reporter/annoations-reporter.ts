@@ -14,12 +14,9 @@
 import { getScannerViolationType } from "../common";
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
-import {
-  BaseReporter,
-  GithubAnnotation,
-  GithubCheckRun,
-} from "./reporter.types";
+import { GithubAnnotation, GithubCheckRun } from "./reporter.types";
 import { ScannerViolation } from "../sfdxCli.types";
+import { BaseReporter } from "./base-reporter";
 
 export const ERROR = "Error";
 export const RIGHT = "RIGHT";

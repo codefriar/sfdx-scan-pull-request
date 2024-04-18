@@ -14,14 +14,11 @@
 import { getGithubFilePath, getScannerViolationType } from "../common";
 
 import { context } from "@actions/github";
-import {
-  BaseReporter,
-  GithubComment,
-  GithubExistingComment,
-} from "./reporter.types";
+import { GithubComment, GithubExistingComment } from "./reporter.types";
 import { ScannerViolation } from "../sfdxCli.types";
 import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
+import { BaseReporter } from "./base-reporter";
 
 const ERROR = "Error";
 
