@@ -1,13 +1,14 @@
 {
   "compilerOptions": {
     "esModuleInterop": true,
-    "module": "commonjs",
+    "module": "ES2022",
+    "moduleResolution": "bundler",
     "noImplicitAny": true,
     "outDir": "./lib",
     "rootDir": "./src",
     "strict": true,
     "skipLibCheck": true,
-    "target": "es6",
+    "target": "ESNext",
     "noUnusedLocals": true,
     "noUnusedParameters": true
   },
