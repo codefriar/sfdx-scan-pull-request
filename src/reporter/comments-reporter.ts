@@ -52,21 +52,27 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
 
     if (method === "POST") {
       try {
-        await this.octokit.request(endpoint, optionalBody);
+        return this.octokit.request(endpoint, optionalBody) as Promise<T>;
       } catch (error) {
         console.error(
           "Error when writing comments: " + JSON.stringify(error, null, 2)
         );
       }
     } else {
-      await this.octokit.paginate(endpoint);
+      try {
+        return this.octokit.paginate(endpoint) as Promise<T>;
+      } catch (error) {
+        console.error(
+          "Error when reading comments: " + JSON.stringify(error, null, 2)
+        );
+      }
     }
 
-    return (
-      method === "POST"
-        ? this.octokit.request(endpoint, optionalBody)
-        : this.octokit.paginate(endpoint)
-    ) as Promise<T>;
+    // return (
+    //   method === "POST"
+    //     ? this.octokit.request(endpoint, optionalBody)
+    //     : this.octokit.paginate(endpoint)
+    // ) as Promise<T>;
   }
 
   /**
@@ -279,6 +285,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   private async getExistingComments() {
     let result = Array<GithubExistingComment>();
     try {
+      // @ts-ignore
       result = await this.performGithubRequest<GithubExistingComment[]>("GET");
       this.logger("Result of getExistingComments: " + result.length);
       result = result.filter(
