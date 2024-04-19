@@ -1,3 +1,12 @@
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 import { getDiffInPullRequest } from "./git-actions.js";
 import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
@@ -11,15 +20,11 @@ import SarifUploader from "./SarifUploader.js";
  * the user. It has a few different modes of operation, which are controlled by the inputs to the action.
  */
 export default class SfScannerPullRequest {
-    scannerFlags;
-    inputs;
-    reporter;
-    pullRequest;
-    sfCli;
     /**
      * @description Constructor for the sfdx scanner pull request action
      */
     constructor() {
+        var _a, _b;
         this.scannerFlags = {
             category: getInput("category"),
             engine: getInput("engine"),
@@ -45,12 +50,12 @@ export default class SfScannerPullRequest {
             severityThreshold: this.validateThresholdInput(),
             strictlyEnforcedRules: getInput("strictly-enforced-rules"),
             deleteResolvedComments: getInput("delete-resolved-comments") === "true",
-            target: context?.payload?.pull_request ? "" : getInput("target"),
+            target: ((_a = context === null || context === void 0 ? void 0 : context.payload) === null || _a === void 0 ? void 0 : _a.pull_request) ? "" : getInput("target"),
             runFlowScanner: getInput("run-flow-scanner") === "true",
             debug: getInput("debug") === "true",
             exportSarif: getInput("export-sarif") === "true",
         };
-        this.pullRequest = context?.payload?.pull_request;
+        this.pullRequest = (_b = context === null || context === void 0 ? void 0 : context.payload) === null || _b === void 0 ? void 0 : _b.pull_request;
         this.validateContext(this.pullRequest, this.inputs.target);
         const reporterParams = {
             inputs: this.inputs,
@@ -91,22 +96,25 @@ export default class SfScannerPullRequest {
     /**
      * @description Performs the static code analysis on the files in the temporary directory
      */
-    async performStaticCodeAnalysisOnFilesInDiff() {
-        console.log("Performing static code analysis on all of the relevant files...");
-        try {
-            return await this.sfCli.getFindingsForFiles();
-        }
-        catch (err) {
-            const typedErr = err;
-            console.error({
-                message: typedErr.message,
-                status: typedErr.status,
-                stack: typedErr.stack,
-                output: typedErr.output?.toString().slice(-1000),
-            });
-            setFailed("Something went wrong when scanning the files.");
-        }
-        return [];
+    performStaticCodeAnalysisOnFilesInDiff() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            console.log("Performing static code analysis on all of the relevant files...");
+            try {
+                return yield this.sfCli.getFindingsForFiles();
+            }
+            catch (err) {
+                const typedErr = err;
+                console.error({
+                    message: typedErr.message,
+                    status: typedErr.status,
+                    stack: typedErr.stack,
+                    output: (_a = typedErr.output) === null || _a === void 0 ? void 0 : _a.toString().slice(-1000),
+                });
+                setFailed("Something went wrong when scanning the files.");
+            }
+            return [];
+        });
     }
     /**
      * @description Parses the findings from the sfdx scanner execution
@@ -168,52 +176,58 @@ export default class SfScannerPullRequest {
      * @description Adds custom rules to the scanner's execution
      * @param rules JSON string containing the custom rules to add
      */
-    async registerCustomScannerRules(rules) {
-        for (let rule of JSON.parse(rules)) {
-            try {
-                await this.sfCli.registerRule(rule.path, rule.language);
+    registerCustomScannerRules(rules) {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            for (let rule of JSON.parse(rules)) {
+                try {
+                    yield this.sfCli.registerRule(rule.path, rule.language);
+                }
+                catch (err) {
+                    const typedErr = err;
+                    console.error({
+                        message: typedErr.message,
+                        status: typedErr.status,
+                        stack: typedErr.stack,
+                        output: (_a = typedErr.output) === null || _a === void 0 ? void 0 : _a.toString(),
+                    });
+                    setFailed("Something went wrong when registering custom rule.");
+                }
             }
-            catch (err) {
-                const typedErr = err;
-                console.error({
-                    message: typedErr.message,
-                    status: typedErr.status,
-                    stack: typedErr.stack,
-                    output: typedErr.output?.toString(),
-                });
-                setFailed("Something went wrong when registering custom rule.");
-            }
-        }
+        });
     }
     /**
      * @description The main workflow for the sfdx scanner pull request action
      */
-    async workflow() {
-        console.log("Beginning sf-scanner-pull-request run...");
-        let filePathToChangedLines = this.inputs.target
-            ? new Map()
-            : await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
-        let filesToScan = this.getFilesToScan(filePathToChangedLines, this.inputs.target);
-        if (filesToScan.length === 0) {
-            console.log("There are no files to scan - exiting now.");
-            return;
-        }
-        this.scannerFlags.target = filesToScan.join(",");
-        if (this.inputs.customPmdRules) {
-            await this.registerCustomScannerRules(this.inputs.customPmdRules);
-        }
-        let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
-        this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
-        try {
-            this.reporter.write();
-        }
-        catch (e) {
-            console.error(e);
-            setFailed("An error occurred while trying to write to GitHub");
-        }
-        if (this.inputs.exportSarif) {
-            await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
-        }
+    workflow() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a, _b, _c, _d, _e, _f, _g;
+            console.log("Beginning sf-scanner-pull-request run...");
+            let filePathToChangedLines = this.inputs.target
+                ? new Map()
+                : yield getDiffInPullRequest((_b = (_a = this.pullRequest) === null || _a === void 0 ? void 0 : _a.base) === null || _b === void 0 ? void 0 : _b.ref, (_d = (_c = this.pullRequest) === null || _c === void 0 ? void 0 : _c.head) === null || _d === void 0 ? void 0 : _d.ref, (_g = (_f = (_e = this.pullRequest) === null || _e === void 0 ? void 0 : _e.base) === null || _f === void 0 ? void 0 : _f.repo) === null || _g === void 0 ? void 0 : _g.clone_url);
+            let filesToScan = this.getFilesToScan(filePathToChangedLines, this.inputs.target);
+            if (filesToScan.length === 0) {
+                console.log("There are no files to scan - exiting now.");
+                return;
+            }
+            this.scannerFlags.target = filesToScan.join(",");
+            if (this.inputs.customPmdRules) {
+                yield this.registerCustomScannerRules(this.inputs.customPmdRules);
+            }
+            let diffFindings = yield this.performStaticCodeAnalysisOnFilesInDiff();
+            this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
+            try {
+                this.reporter.write();
+            }
+            catch (e) {
+                console.error(e);
+                setFailed("An error occurred while trying to write to GitHub");
+            }
+            if (this.inputs.exportSarif) {
+                yield new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
+            }
+        });
     }
 }
 //# sourceMappingURL=SfScannerPullRequest.js.map

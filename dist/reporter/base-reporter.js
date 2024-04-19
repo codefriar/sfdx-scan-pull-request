@@ -1,12 +1,8 @@
 import { setFailed } from "@actions/core";
 import { getCustomOctokitInstance, } from "./reporter.types.js";
 export class BaseReporter {
-    memoizedOctokit = null;
-    hasHaltingError;
-    inputs;
-    issues;
-    context;
     constructor({ context, inputs }) {
+        this.memoizedOctokit = null;
         this.hasHaltingError = false;
         this.issues = [];
         this.context = context;

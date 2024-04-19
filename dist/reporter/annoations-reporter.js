@@ -10,6 +10,15 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
+var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, generator) {
+    function adopt(value) { return value instanceof P ? value : new P(function (resolve) { resolve(value); }); }
+    return new (P || (P = Promise))(function (resolve, reject) {
+        function fulfilled(value) { try { step(generator.next(value)); } catch (e) { reject(e); } }
+        function rejected(value) { try { step(generator["throw"](value)); } catch (e) { reject(e); } }
+        function step(result) { result.done ? resolve(result.value) : adopt(result.value).then(fulfilled, rejected); }
+        step((generator = generator.apply(thisArg, _arguments || [])).next());
+    });
+};
 import { getScannerViolationType } from "../common.js";
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
@@ -32,38 +41,41 @@ export class AnnotationsReporter extends BaseReporter {
     /**
      * @description Writes the Check Run to GitHub
      */
-    async write() {
-        console.log("Creating Check Runs using GitHub REST API...");
-        let conclusion;
-        if (this.hasHaltingError) {
-            conclusion = "failure";
-        }
-        else {
-            conclusion = this.issues.length === 0 ? "success" : "neutral";
-        }
-        const commit_id = this.context.payload?.pull_request
-            ? this.context.payload.pull_request.head.sha
-            : this.context.sha;
-        if (this.issues) {
-            const request = {
-                name: "sfdx-scanner",
-                head_sha: commit_id,
-                status: "completed",
-                conclusion: conclusion,
-                output: {
-                    title: "Results from sfdx-scanner",
-                    summary: `${this.issues.length} violations found`,
-                    annotations: this.issues,
-                },
-            };
-            this.checkHasHaltingError();
-            try {
-                await this.performGithubRequest(request);
+    write() {
+        return __awaiter(this, void 0, void 0, function* () {
+            var _a;
+            console.log("Creating Check Runs using GitHub REST API...");
+            let conclusion;
+            if (this.hasHaltingError) {
+                conclusion = "failure";
             }
-            catch (error) {
-                console.error("Error when creating check run: " + JSON.stringify(error, null, 2));
+            else {
+                conclusion = this.issues.length === 0 ? "success" : "neutral";
             }
-        }
+            const commit_id = ((_a = this.context.payload) === null || _a === void 0 ? void 0 : _a.pull_request)
+                ? this.context.payload.pull_request.head.sha
+                : this.context.sha;
+            if (this.issues) {
+                const request = {
+                    name: "sfdx-scanner",
+                    head_sha: commit_id,
+                    status: "completed",
+                    conclusion: conclusion,
+                    output: {
+                        title: "Results from sfdx-scanner",
+                        summary: `${this.issues.length} violations found`,
+                        annotations: this.issues,
+                    },
+                };
+                this.checkHasHaltingError();
+                try {
+                    yield this.performGithubRequest(request);
+                }
+                catch (error) {
+                    console.error("Error when creating check run: " + JSON.stringify(error, null, 2));
+                }
+            }
+        });
     }
     /**
      * @description Translates a violation object into a comment
