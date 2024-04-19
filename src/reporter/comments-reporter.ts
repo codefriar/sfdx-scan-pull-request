@@ -44,7 +44,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`
     }/comments`;
 
-    // @ts-ignore
+    console.log("### Debug information for endpoint: " + endpoint);
+    console.log("### Debug information for optionalBody: " + optionalBody);
+
     return (
       method === "POST"
         ? this.octokit.request(endpoint, optionalBody)

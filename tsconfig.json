@@ -1,10 +1,10 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
   "compilerOptions": {
-    "target": "ES6",
-    "module": "Node16",
+    "target": "ES2022",
+    "module": "NodeNext",
     "rootDir": "./src",
-    "moduleResolution": "Node16",
+    "moduleResolution": "NodeNext",
     "baseUrl": "./",
     "sourceMap": true,
     "outDir": "./lib",
@@ -18,20 +18,3 @@
   "include": ["src/*.ts"],
   "exclude": ["./dist", "./node_modules", "tests/**", "./coverage"]
 }
-//{
-//  "compilerOptions": {
-//    "esModuleInterop": true,
-//    "module": "commonjs",
-//    "moduleResolution": "node",
-//    "noImplicitAny": true,
-//    "outDir": "./lib",
-//    "rootDir": "./src",
-//    "strict": true,
-//    "skipLibCheck": true,
-//    "target": "es6",
-//    "noUnusedLocals": true,
-//    "noUnusedParameters": true
-//  },
-//  "include": ["src/*.ts"],
-//  "exclude": ["tests/**", "node_modules/**"]
-//}
