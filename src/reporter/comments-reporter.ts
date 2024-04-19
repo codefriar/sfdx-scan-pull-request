@@ -32,7 +32,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    * @param optionalBody Body is required when writing a new comment
    * @private
    */
-  private performGithubRequest<T>(
+  private async performGithubRequest<T>(
     method: "POST" | "GET",
     optionalBody?: GithubComment
   ) {
@@ -49,6 +49,18 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       "### Debug information for optionalBody: " +
         JSON.stringify(optionalBody, null, 2)
     );
+
+    if (method === "POST") {
+      try {
+        await this.octokit.request(endpoint, optionalBody);
+      } catch (error) {
+        console.error(
+          "Error when writing comments: " + JSON.stringify(error, null, 2)
+        );
+      }
+    } else {
+      await this.octokit.paginate(endpoint);
+    }
 
     return (
       method === "POST"
