@@ -16,7 +16,7 @@ import SfScannerPullRequest from "./SfScannerPullRequest.js";
 /**
  * @description Because this file is the entry point of the action, it is the first file that is executed when the
  * action is run. This function is responsible for creating an instance of the SfScannerPullRequest class and running
- * the workflow.
+ * the workflow. This function is asynchronous because the workflow is asynchronous.
  */
 async function main(): Promise<void> {
   console.log("#### starting main function ####");
