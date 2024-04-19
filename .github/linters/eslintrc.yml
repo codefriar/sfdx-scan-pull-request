@@ -1,0 +1,5 @@
+settings:
+  import/resolver:
+    typescript:
+      alwaysTryTypes: true
+      project: './.github/linters/tsconfig.json'

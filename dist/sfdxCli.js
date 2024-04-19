@@ -1,4 +1,3 @@
-"use strict";
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,43 +10,14 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    var desc = Object.getOwnPropertyDescriptor(m, k);
-    if (!desc || ("get" in desc ? !m.__esModule : desc.writable || desc.configurable)) {
-      desc = { enumerable: true, get: function() { return m[k]; } };
-    }
-    Object.defineProperty(o, k2, desc);
-}) : (function(o, m, k, k2) {
-    if (k2 === undefined) k2 = k;
-    o[k2] = m[k];
-}));
-var __setModuleDefault = (this && this.__setModuleDefault) || (Object.create ? (function(o, v) {
-    Object.defineProperty(o, "default", { enumerable: true, value: v });
-}) : function(o, v) {
-    o["default"] = v;
-});
-var __importStar = (this && this.__importStar) || function (mod) {
-    if (mod && mod.__esModule) return mod;
-    var result = {};
-    if (mod != null) for (var k in mod) if (k !== "default" && Object.prototype.hasOwnProperty.call(mod, k)) __createBinding(result, mod, k);
-    __setModuleDefault(result, mod);
-    return result;
-};
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const child_process_1 = require("child_process");
-const fs_1 = __importDefault(require("fs"));
-const path = __importStar(require("path"));
-const common_1 = require("./common");
-const sfdxCli_types_1 = require("./sfdxCli.types");
-const sarif_types_1 = require("./sarif.types");
+import { execSync } from "child_process";
+import fs from "fs";
+import * as path from "path";
+import { fileExists } from "./common.js";
 /**
  * @description This class is responsible for interfacing with the Salesforce CLI.
  */
-class SfCLI {
+export default class SfCLI {
     scannerFlags;
     /**
      * @description Constructor for the SfCLI class
@@ -63,10 +33,10 @@ class SfCLI {
      */
     async getFindingsForFiles() {
         await this.generateSarifOutputFile();
-        if (!(0, common_1.fileExists)(this.scannerFlags.outfile)) {
+        if (!fileExists(this.scannerFlags.outfile)) {
             throw new Error("SARIF output file not found");
         }
-        const sarifContent = fs_1.default.readFileSync(this.scannerFlags.outfile, "utf-8");
+        const sarifContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
         const sarifJson = JSON.parse(sarifContent);
         const findings = [];
         sarifJson.runs.forEach((run) => {
@@ -115,7 +85,7 @@ class SfCLI {
         let result = null;
         try {
             const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-            const jsonPaylod = (0, child_process_1.execSync)(cliCommand, {
+            const jsonPaylod = execSync(cliCommand, {
                 maxBuffer: 10485760,
             }).toString();
             result = JSON.parse(jsonPaylod).result;
@@ -158,4 +128,4 @@ class SfCLI {
         ]);
     }
 }
-exports.default = SfCLI;
+//# sourceMappingURL=sfdxCli.js.map

@@ -1,4 +1,3 @@
-"use strict";
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,25 +10,22 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.AnnotationsReporter = exports.RIGHT = exports.ERROR = void 0;
-const common_1 = require("../common");
-const action_1 = require("@octokit/action");
-const github_1 = require("@actions/github");
-const reporter_types_1 = require("./reporter.types");
-const sfdxCli_types_1 = require("../sfdxCli.types");
-exports.ERROR = "Error";
-exports.RIGHT = "RIGHT";
-class AnnotationsReporter extends reporter_types_1.BaseReporter {
+import { getScannerViolationType } from "../common.js";
+import { Octokit } from "@octokit/action";
+import { context } from "@actions/github";
+import { BaseReporter } from "./base-reporter.js";
+export const ERROR = "Error";
+export const RIGHT = "RIGHT";
+export class AnnotationsReporter extends BaseReporter {
     /**
      * @description Executes the REST request to submit the Check Run to GitHub
      * @param body
      * @private
      */
     performGithubRequest(body) {
-        const octokit = new action_1.Octokit();
-        const owner = github_1.context.repo.owner;
-        const repo = github_1.context.repo.repo;
+        const octokit = new Octokit();
+        const owner = context.repo.owner;
+        const repo = context.repo.repo;
         const endpoint = `POST /repos/${owner}/${repo}/check-runs`;
         return octokit.request(endpoint, body);
     }
@@ -77,8 +73,8 @@ class AnnotationsReporter extends reporter_types_1.BaseReporter {
      * @param engine The engine that discovered the violation
      */
     translateViolationToReport(filePath, violation, engine) {
-        const violationType = (0, common_1.getScannerViolationType)(this.inputs, violation, engine);
-        if (violationType === exports.ERROR) {
+        const violationType = getScannerViolationType(this.inputs, violation, engine);
+        if (violationType === ERROR) {
             this.hasHaltingError = true;
         }
         let endLine = violation.endLine
@@ -90,7 +86,7 @@ class AnnotationsReporter extends reporter_types_1.BaseReporter {
         }
         this.issues.push({
             path: filePath,
-            start_side: exports.RIGHT,
+            start_side: RIGHT,
             annotation_level: "notice",
             start_line: startLine,
             end_line: endLine,
@@ -99,4 +95,4 @@ class AnnotationsReporter extends reporter_types_1.BaseReporter {
         });
     }
 }
-exports.AnnotationsReporter = AnnotationsReporter;
+//# sourceMappingURL=annoations-reporter.js.map

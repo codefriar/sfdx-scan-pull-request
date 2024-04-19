@@ -1,20 +1,19 @@
-import { PluginInputs } from "../common";
-import { Context } from "@actions/github/lib/context";
-import { ScannerViolation } from "../sfdxCli.types";
+import { PluginInputs } from "../common.js";
+import { ScannerViolation } from "../sfdxCli.types.js";
 import { setFailed } from "@actions/core";
 import {
   CustomOctokitWithPlugins,
   getCustomOctokitInstance,
   Reporter,
   ReporterProps,
-} from "./reporter.types";
+} from "./reporter.types.js";
 
 export abstract class BaseReporter<T> implements Reporter {
   private memoizedOctokit: CustomOctokitWithPlugins | null = null;
   protected hasHaltingError;
   protected inputs: PluginInputs;
   protected issues: T[];
-  protected context: Context;
+  protected context;
 
   constructor({ context, inputs }: ReporterProps) {
     this.hasHaltingError = false;

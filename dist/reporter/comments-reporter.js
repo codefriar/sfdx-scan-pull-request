@@ -1,4 +1,3 @@
-"use strict";
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,18 +10,15 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.CommentsReporter = void 0;
-const common_1 = require("../common");
-const github_1 = require("@actions/github");
-const reporter_types_1 = require("./reporter.types");
-const sfdxCli_types_1 = require("../sfdxCli.types");
-const fs_1 = require("fs");
-const artifact_1 = require("@actions/artifact");
+import { getGithubFilePath, getScannerViolationType } from "../common.js";
+import { context } from "@actions/github";
+import { promises as fs } from "fs";
+import { DefaultArtifactClient } from "@actions/artifact";
+import { BaseReporter } from "./base-reporter.js";
 const ERROR = "Error";
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
 const COMMENTS_FILE_NAME = "sfdx-scanner-comments.md";
-class CommentsReporter extends reporter_types_1.BaseReporter {
+export class CommentsReporter extends BaseReporter {
     /**
      * Read and write GitHub comments
      * @param method GET (read) or POST (write)
@@ -30,10 +26,10 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
      * @private
      */
     performGithubRequest(method, optionalBody) {
-        const owner = github_1.context.repo.owner;
-        const repo = github_1.context.repo.repo;
-        const prNumber = github_1.context.payload.pull_request?.number;
-        const endpoint = `${method} /repos/${owner}/${repo}/${prNumber ? `pulls/${prNumber}` : `commits/${github_1.context.sha}`}/comments`;
+        const owner = context.repo.owner;
+        const repo = context.repo.repo;
+        const prNumber = context.payload.pull_request?.number;
+        const endpoint = `${method} /repos/${owner}/${repo}/${prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`}/comments`;
         // @ts-ignore
         return (method === "POST"
             ? this.octokit.request(endpoint, optionalBody)
@@ -45,8 +41,8 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
      * @private
      */
     async performGithubDeleteRequest(comment) {
-        const owner = github_1.context.repo.owner;
-        const repo = github_1.context.repo.repo;
+        const owner = context.repo.owner;
+        const repo = context.repo.repo;
         const endpoint = `DELETE /repos/${owner}/${repo}/pulls/comments/${comment.id}`;
         await this.octokit.request(endpoint);
     }
@@ -144,9 +140,9 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
      * @private
      */
     async uploadCommentsAsArtifactAndPostComment(comments) {
-        await fs_1.promises.writeFile(COMMENTS_FILE_NAME, comments.map((comment) => comment.body).join("\n\n"));
+        await fs.writeFile(COMMENTS_FILE_NAME, comments.map((comment) => comment.body).join("\n\n"));
         try {
-            let artifactResponse = await new artifact_1.DefaultArtifactClient().uploadArtifact(COMMENTS_FILE_NAME, [COMMENTS_FILE_NAME], process.cwd());
+            let artifactResponse = await new DefaultArtifactClient().uploadArtifact(COMMENTS_FILE_NAME, [COMMENTS_FILE_NAME], process.cwd());
             console.log("Artifact upload response: " + JSON.stringify(artifactResponse, null, 2));
         }
         catch (error) {
@@ -231,7 +227,7 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
         if (endLine === startLine) {
             endLine++;
         }
-        const violationType = (0, common_1.getScannerViolationType)(this.inputs, violation, engine);
+        const violationType = getScannerViolationType(this.inputs, violation, engine);
         if (violationType === ERROR) {
             this.hasHaltingError = true;
         }
@@ -267,7 +263,7 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
 | Severity | ${violation.severity} |
 | Type | ${violationType} |
 | Message| [${violation.message.trim()}](${violation.url}) |
-| File | [${filePath}](${(0, common_1.getGithubFilePath)(commit_id, filePath)}) |`;
+| File | [${filePath}](${getGithubFilePath(commit_id, filePath)}) |`;
     }
     logger(message) {
         if (this.inputs.debug) {
@@ -275,4 +271,4 @@ class CommentsReporter extends reporter_types_1.BaseReporter {
         }
     }
 }
-exports.CommentsReporter = CommentsReporter;
+//# sourceMappingURL=comments-reporter.js.map

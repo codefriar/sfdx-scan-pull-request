@@ -2,17 +2,17 @@ import {
   ScannerFinding,
   ScannerFlags,
   ScannerViolation,
-} from "./sfdxCli.types";
-import { PluginInputs } from "./common";
-import { Reporter, ReporterProps } from "./reporter/reporter.types";
-import { getDiffInPullRequest, GithubPullRequest } from "./git-actions";
-import SfCLI from "./sfdxCli";
+} from "./sfdxCli.types.js";
+import { PluginInputs } from "./common.js";
+import { Reporter, ReporterProps } from "./reporter/reporter.types.js";
+import { getDiffInPullRequest, GithubPullRequest } from "./git-actions.js";
+import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
 import { context } from "@actions/github";
-import { CommentsReporter } from "./reporter/comments-reporter";
-import { AnnotationsReporter } from "./reporter/annoations-reporter";
-import { ExecSyncError } from "./index.types";
-import SarifUploader from "./SarifUploader";
+import { CommentsReporter } from "./reporter/comments-reporter.js";
+import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
+import { ExecSyncError } from "./index.types.js";
+import SarifUploader from "./SarifUploader.js";
 
 /**
  * @description This is the main class for the sfdx scanner pull request action.

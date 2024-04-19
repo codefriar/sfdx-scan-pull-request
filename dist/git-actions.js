@@ -1,4 +1,3 @@
-"use strict";
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -11,31 +10,25 @@
    See the License for the specific language governing permissions and
    limitations under the License.
  */
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-exports.getDiffInPullRequest = void 0;
-const parse_diff_1 = __importDefault(require("parse-diff"));
-const fs_1 = __importDefault(require("fs"));
-const github_1 = require("@actions/github");
-const child_process_1 = require("child_process");
+import parse from "parse-diff";
+import fs from "fs";
+import { execSync } from "child_process";
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 /**
  * @description Calculates the diff for all files within the pull request and
  * populates a map of filePath -> Set of changed line numbers
  */
-async function getDiffInPullRequest(baseRef, headRef, destination) {
+export async function getDiffInPullRequest(baseRef, headRef, destination) {
     if (destination) {
-        (0, child_process_1.execSync)(`git remote add -f destination ${destination} 2>&1`);
-        (0, child_process_1.execSync)(`git remote update 2>&1`);
+        execSync(`git remote add -f destination ${destination} 2>&1`);
+        execSync(`git remote update 2>&1`);
     }
     /**
      * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
      * called from within action. Writing to file, then reading avoids this error.
      */
-    (0, child_process_1.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
-    const files = (0, parse_diff_1.default)(fs_1.default.readFileSync(DIFF_OUTPUT).toString());
+    execSync(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
+    const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
     const filePathToChangedLines = new Map();
     for (let file of files) {
         if (file.to && file.to !== "/dev/null") {
@@ -52,4 +45,4 @@ async function getDiffInPullRequest(baseRef, headRef, destination) {
     }
     return filePathToChangedLines;
 }
-exports.getDiffInPullRequest = getDiffInPullRequest;
+//# sourceMappingURL=git-actions.js.map

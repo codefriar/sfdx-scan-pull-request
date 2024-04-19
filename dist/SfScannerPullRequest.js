@@ -1,25 +1,16 @@
-"use strict";
-var __importDefault = (this && this.__importDefault) || function (mod) {
-    return (mod && mod.__esModule) ? mod : { "default": mod };
-};
-Object.defineProperty(exports, "__esModule", { value: true });
-const sfdxCli_types_1 = require("./sfdxCli.types");
-const common_1 = require("./common");
-const reporter_types_1 = require("./reporter/reporter.types");
-const git_actions_1 = require("./git-actions");
-const sfdxCli_1 = __importDefault(require("./sfdxCli"));
-const core_1 = require("@actions/core");
-const github_1 = require("@actions/github");
-const comments_reporter_1 = require("./reporter/comments-reporter");
-const annoations_reporter_1 = require("./reporter/annoations-reporter");
-const index_types_1 = require("./index.types");
-const SarifUploader_1 = __importDefault(require("./SarifUploader"));
+import { getDiffInPullRequest } from "./git-actions.js";
+import SfCLI from "./sfdxCli.js";
+import { getInput, setFailed } from "@actions/core";
+import { context } from "@actions/github";
+import { CommentsReporter } from "./reporter/comments-reporter.js";
+import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
+import SarifUploader from "./SarifUploader.js";
 /**
  * @description This is the main class for the sfdx scanner pull request action.
  * Its responsibility is to execute the static code analysis on the files in the pull request, and report them back to
  * the user. It has a few different modes of operation, which are controlled by the inputs to the action.
  */
-class SfScannerPullRequest {
+export default class SfScannerPullRequest {
     scannerFlags;
     inputs;
     reporter;
@@ -30,12 +21,12 @@ class SfScannerPullRequest {
      */
     constructor() {
         this.scannerFlags = {
-            category: (0, core_1.getInput)("category"),
-            engine: (0, core_1.getInput)("engine"),
-            env: (0, core_1.getInput)("eslint-env"),
-            eslintconfig: (0, core_1.getInput)("eslintconfig"),
-            pmdconfig: (0, core_1.getInput)("pmdconfig"),
-            tsConfig: (0, core_1.getInput)("tsconfig"),
+            category: getInput("category"),
+            engine: getInput("engine"),
+            env: getInput("eslint-env"),
+            eslintconfig: getInput("eslintconfig"),
+            pmdconfig: getInput("pmdconfig"),
+            tsConfig: getInput("tsconfig"),
             format: "sarif", // This isn't configurable, because we use the sarif output to process the findings
             outfile: "sfdx-scan.sarif", // This could be configurable, but isn't currently
         };
@@ -45,37 +36,37 @@ class SfScannerPullRequest {
          * They are defined as configurable in the action.yml file.
          */
         this.inputs = {
-            reportMode: (0, core_1.getInput)("report-mode") || "check-runs",
-            customPmdRules: (0, core_1.getInput)("custom-pmd-rules"),
-            maxNumberOfComments: parseInt((0, core_1.getInput)("max-number-of-comments")) || 100, // default of 100 comments
-            rateLimitWaitTime: parseInt((0, core_1.getInput)("rate-limit-wait-time")) || 60000, // default of 1 minute
-            rateLimitRetries: parseInt((0, core_1.getInput)("rate-limit-retries")) || 5, // default of 5 retries
-            commentBatchSize: parseInt((0, core_1.getInput)("comment-batch-size")) || 15, // default of 15 comments
+            reportMode: getInput("report-mode") || "check-runs",
+            customPmdRules: getInput("custom-pmd-rules"),
+            maxNumberOfComments: parseInt(getInput("max-number-of-comments")) || 100, // default of 100 comments
+            rateLimitWaitTime: parseInt(getInput("rate-limit-wait-time")) || 60000, // default of 1 minute
+            rateLimitRetries: parseInt(getInput("rate-limit-retries")) || 5, // default of 5 retries
+            commentBatchSize: parseInt(getInput("comment-batch-size")) || 15, // default of 15 comments
             severityThreshold: this.validateThresholdInput(),
-            strictlyEnforcedRules: (0, core_1.getInput)("strictly-enforced-rules"),
-            deleteResolvedComments: (0, core_1.getInput)("delete-resolved-comments") === "true",
-            target: github_1.context?.payload?.pull_request ? "" : (0, core_1.getInput)("target"),
-            runFlowScanner: (0, core_1.getInput)("run-flow-scanner") === "true",
-            debug: (0, core_1.getInput)("debug") === "true",
-            exportSarif: (0, core_1.getInput)("export-sarif") === "true",
+            strictlyEnforcedRules: getInput("strictly-enforced-rules"),
+            deleteResolvedComments: getInput("delete-resolved-comments") === "true",
+            target: context?.payload?.pull_request ? "" : getInput("target"),
+            runFlowScanner: getInput("run-flow-scanner") === "true",
+            debug: getInput("debug") === "true",
+            exportSarif: getInput("export-sarif") === "true",
         };
-        this.pullRequest = github_1.context?.payload?.pull_request;
+        this.pullRequest = context?.payload?.pull_request;
         this.validateContext(this.pullRequest, this.inputs.target);
         const reporterParams = {
             inputs: this.inputs,
-            context: github_1.context,
+            context: context,
         };
         this.reporter =
             this.inputs.reportMode === "comments"
-                ? new comments_reporter_1.CommentsReporter(reporterParams)
-                : new annoations_reporter_1.AnnotationsReporter(reporterParams);
-        this.sfCli = new sfdxCli_1.default(this.scannerFlags);
+                ? new CommentsReporter(reporterParams)
+                : new AnnotationsReporter(reporterParams);
+        this.sfCli = new SfCLI(this.scannerFlags);
     }
     /**
      * @description Validates the threshold Input to the plugin.
      */
     validateThresholdInput() {
-        let normalizedThreshold = parseInt((0, core_1.getInput)("severity-threshold")) || 0;
+        let normalizedThreshold = parseInt(getInput("severity-threshold")) || 0;
         if (normalizedThreshold < 0) {
             console.log("The severity threshold must be between 0 and 3 due to the scanner's limitations. Defaulting to 0.");
             normalizedThreshold = 0;
@@ -94,7 +85,7 @@ class SfScannerPullRequest {
     validateContext(pullRequest, target) {
         console.log("Validating that this action was invoked from an acceptable context...");
         if (!pullRequest && !target) {
-            (0, core_1.setFailed)("This action is only applicable when invoked by a pull request, or with the target property supplied.");
+            setFailed("This action is only applicable when invoked by a pull request, or with the target property supplied.");
         }
     }
     /**
@@ -113,7 +104,7 @@ class SfScannerPullRequest {
                 stack: typedErr.stack,
                 output: typedErr.output?.toString().slice(-1000),
             });
-            (0, core_1.setFailed)("Something went wrong when scanning the files.");
+            setFailed("Something went wrong when scanning the files.");
         }
         return [];
     }
@@ -190,7 +181,7 @@ class SfScannerPullRequest {
                     stack: typedErr.stack,
                     output: typedErr.output?.toString(),
                 });
-                (0, core_1.setFailed)("Something went wrong when registering custom rule.");
+                setFailed("Something went wrong when registering custom rule.");
             }
         }
     }
@@ -201,7 +192,7 @@ class SfScannerPullRequest {
         console.log("Beginning sf-scanner-pull-request run...");
         let filePathToChangedLines = this.inputs.target
             ? new Map()
-            : await (0, git_actions_1.getDiffInPullRequest)(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
+            : await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
         let filesToScan = this.getFilesToScan(filePathToChangedLines, this.inputs.target);
         if (filesToScan.length === 0) {
             console.log("There are no files to scan - exiting now.");
@@ -218,11 +209,11 @@ class SfScannerPullRequest {
         }
         catch (e) {
             console.error(e);
-            (0, core_1.setFailed)("An error occurred while trying to write to GitHub");
+            setFailed("An error occurred while trying to write to GitHub");
         }
         if (this.inputs.exportSarif) {
-            await new SarifUploader_1.default(this.scannerFlags).uploadSarifFileToCodeQL();
+            await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
         }
     }
 }
-exports.default = SfScannerPullRequest;
+//# sourceMappingURL=SfScannerPullRequest.js.map

@@ -11,14 +11,14 @@
    limitations under the License.
  */
 
-import { getGithubFilePath, getScannerViolationType } from "../common";
+import { getGithubFilePath, getScannerViolationType } from "../common.js";
 
 import { context } from "@actions/github";
-import { GithubComment, GithubExistingComment } from "./reporter.types";
-import { ScannerViolation } from "../sfdxCli.types";
+import { GithubComment, GithubExistingComment } from "./reporter.types.js";
+import { ScannerViolation } from "../sfdxCli.types.js";
 import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
-import { BaseReporter } from "./base-reporter";
+import { BaseReporter } from "./base-reporter.js";
 
 const ERROR = "Error";
 

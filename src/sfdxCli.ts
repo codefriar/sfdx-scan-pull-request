@@ -14,14 +14,14 @@
 import { execSync } from "child_process";
 import fs from "fs";
 import * as path from "path";
-import { fileExists } from "./common";
+import { fileExists } from "./common.js";
 import {
   ScannerFinding,
   ScannerFlags,
   ScannerViolation,
   SfdxCommandResult,
-} from "./sfdxCli.types";
-import { SarifDocument } from "./sarif.types";
+} from "./sfdxCli.types.js";
+import { SarifDocument } from "./sarif.types.js";
 
 /**
  * @description This class is responsible for interfacing with the Salesforce CLI.

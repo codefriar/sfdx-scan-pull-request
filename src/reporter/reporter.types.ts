@@ -11,9 +11,9 @@
    limitations under the License.
  */
 
-import { PluginInputs } from "../common";
-import { ScannerViolation } from "../sfdxCli.types";
-import { Context } from "@actions/github/lib/context";
+import { PluginInputs } from "../common.js";
+import { ScannerViolation } from "../sfdxCli.types.js";
+import { Context } from "@actions/github/lib/context.js";
 import { Octokit } from "@octokit/core";
 import { throttling } from "@octokit/plugin-throttling";
 import { retry } from "@octokit/plugin-retry";
