@@ -60,7 +60,8 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       }
     } else {
       try {
-        await this.octokit.paginate(endpoint);
+        let results = await this.octokit.paginate(endpoint);
+        console.log("### Debug information for results: " + results);
         return this.octokit.paginate(endpoint) as Promise<T>;
       } catch (error) {
         console.error(
