@@ -28,4 +28,4 @@ async function main(): Promise<void> {
 /**
  * Call the bootstrapping function to run the main workflow
  */
-main();
+await main();
