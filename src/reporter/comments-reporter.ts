@@ -60,6 +60,12 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       }
     } else {
       try {
+        console.log(
+          "### Debug information: Starting the call to get existing comments"
+        );
+        console.log(
+          "### Debug information type of octokit: " + typeof this.octokit
+        );
         let results = await this.octokit.paginate(endpoint);
         console.log("### Debug information for results: " + results);
         return this.octokit.paginate(endpoint) as Promise<T>;
