@@ -45,7 +45,10 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     }/comments`;
 
     console.log("### Debug information for endpoint: " + endpoint);
-    console.log("### Debug information for optionalBody: " + optionalBody);
+    console.log(
+      "### Debug information for optionalBody: " +
+        JSON.stringify(optionalBody, null, 2)
+    );
 
     return (
       method === "POST"
