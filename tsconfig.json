@@ -15,6 +15,7 @@
     "skipLibCheck": true,
     "newLine": "lf"
   },
+  "include": ["src/*.ts"],
   "exclude": ["./dist", "./node_modules", "tests/**", "./coverage"]
 }
 //{
