@@ -84,6 +84,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       console.error(
         "The scanner found unresolved issues that have already been identified."
       );
+      this.hasHaltingError = true;
     }
     if (netNewComments.length > this.inputs.maxNumberOfComments) {
       // If the number of violations is higher than the developer-specified maximum,
