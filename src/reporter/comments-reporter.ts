@@ -20,6 +20,12 @@ import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
 import { BaseReporter } from "./base-reporter.js";
 
+import { Octokit } from "@octokit/core";
+import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { throttling } from "@octokit/plugin-throttling";
+import { retry } from "@octokit/plugin-retry";
+import { createActionAuth } from "@octokit/auth-action";
+
 const ERROR = "Error";
 
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
@@ -40,6 +46,30 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const prNumber = context.payload.pull_request?.number;
 
+    const MyOctokit = Octokit.plugin(paginateRest, throttling, retry).defaults({
+      throttle: {
+        onRateLimit: (retryAfter, options) => {
+          console.warn(
+            `Request quota exhausted for request ${options.method} ${options.url}. Retrying after ${retryAfter} seconds!`
+          );
+          return true;
+        },
+        onSecondaryRateLimit: (retryAfter, options) => {
+          console.warn(
+            `Secondary rate limit detected for request ${options.method} ${options.url}`
+          );
+          if (options.request.retryCount <= 5) {
+            console.log(`Retrying after ${retryAfter} seconds!`);
+            return true;
+          }
+          return false;
+        },
+      },
+      authStrategy: createActionAuth,
+      userAgent: `my-octokit-action/v1.2.3`,
+    });
+    const octokit = new MyOctokit();
+
     const endpoint = `${method} /repos/${owner}/${repo}/${
       prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`
     }/comments`;
@@ -52,7 +82,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
 
     if (method === "POST") {
       try {
-        return this.octokit.request(endpoint, optionalBody) as Promise<T>;
+        return octokit.request(endpoint, optionalBody) as Promise<T>;
       } catch (error) {
         console.error(
           "Error when writing comments: " + JSON.stringify(error, null, 2)
@@ -65,11 +95,11 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         );
         console.log(
           "### Debug information type of octokit paginate: " +
-            typeof this.octokit.paginate
+            typeof octokit.paginate
         );
-        let results = await this.octokit.paginate(endpoint);
+        let results = await octokit.paginate(endpoint);
         console.log("### Debug information for results: " + results);
-        return this.octokit.paginate(endpoint) as Promise<T>;
+        return octokit.paginate(endpoint) as Promise<T>;
       } catch (error) {
         console.error(
           "Error when reading comments: " + JSON.stringify(error, null, 2)
