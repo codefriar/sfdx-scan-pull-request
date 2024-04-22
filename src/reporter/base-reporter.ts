@@ -1,42 +1,48 @@
 import { PluginInputs } from "../common.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { setFailed } from "@actions/core";
-import {
-  CustomOctokitWithPlugins,
-  getCustomOctokitInstance,
-  Reporter,
-  ReporterProps,
-} from "./reporter.types.js";
+import { Reporter, ReporterProps } from "./reporter.types.js";
+import { Octokit } from "@octokit/core";
+import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { throttling } from "@octokit/plugin-throttling";
+import { retry } from "@octokit/plugin-retry";
+import { createActionAuth } from "@octokit/auth-action";
+
+const CustomOctokit = Octokit.plugin(paginateRest, throttling, retry).defaults({
+  throttle: {
+    onRateLimit: (retryAfter, options) => {
+      console.warn(
+        `Request quota exhausted for request ${options.method} ${options.url}. Retrying after ${retryAfter} seconds!`
+      );
+      return true;
+    },
+    onSecondaryRateLimit: (retryAfter, options) => {
+      console.warn(
+        `Secondary rate limit detected for request ${options.method} ${options.url}`
+      );
+      if (options.request.retryCount <= 5) {
+        console.log(`Retrying after ${retryAfter} seconds!`);
+        return true;
+      }
+      return false;
+    },
+  },
+  authStrategy: createActionAuth,
+  userAgent: `my-octokit-action/v1.2.3`,
+});
 
 export abstract class BaseReporter<T> implements Reporter {
-  private memoizedOctokit: CustomOctokitWithPlugins | null = null;
   protected hasHaltingError;
   protected inputs: PluginInputs;
   protected issues: T[];
   protected context;
+  protected octokit = new CustomOctokit();
 
   constructor({ context, inputs }: ReporterProps) {
     this.hasHaltingError = false;
     this.issues = [];
     this.context = context;
     this.inputs = inputs;
-  }
-
-  protected get octokit(): CustomOctokitWithPlugins {
-    if (this.memoizedOctokit === null) {
-      // Compute the value if it hasn't been memoized yet
-      this.memoizedOctokit = this.getMemoizedOctokit();
-    }
-    return this.memoizedOctokit;
-  }
-
-  /**
-   * @description This is a workaround for octokit/actions not supporting additional plugins.
-   * octokit/actions is octokit/core with paginateRest and legacyRestEndpointMethods plugins.
-   * This custom version includes the throttling plugin.
-   */
-  private getMemoizedOctokit(): CustomOctokitWithPlugins {
-    return getCustomOctokitInstance();
   }
 
   write(): void {

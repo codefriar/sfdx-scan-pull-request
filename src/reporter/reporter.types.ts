@@ -14,57 +14,6 @@
 import { PluginInputs } from "../common.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { Context } from "@actions/github/lib/context.js";
-import { Octokit } from "@octokit/core";
-import { throttling } from "@octokit/plugin-throttling";
-import { retry } from "@octokit/plugin-retry";
-import { paginateRest, PaginateInterface } from "@octokit/plugin-paginate-rest";
-import { legacyRestEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
-import { createActionAuth } from "@octokit/auth-action";
-import { RequestError } from "@octokit/request-error";
-
-export type CustomOctokitWithPlugins = Octokit & {
-  paginate: PaginateInterface;
-} & {
-  legacyRestEndpointMethods: {
-    retry: {
-      retryRequest: (
-        error: RequestError,
-        retries: number,
-        retryAfter: number
-      ) => RequestError;
-    };
-  };
-};
-
-export function getCustomOctokitInstance(): CustomOctokitWithPlugins {
-  return Octokit.plugin(
-    throttling,
-    paginateRest,
-    legacyRestEndpointMethods,
-    retry
-  ).defaults({
-    throttle: {
-      onRateLimit: (retryAfter, options) => {
-        console.warn(
-          `Request quota exhausted for request ${options.method} ${options.url}. Retrying after ${retryAfter} seconds!`
-        );
-        return true;
-      },
-      onSecondaryRateLimit: (retryAfter, options) => {
-        console.warn(
-          `Secondary rate limit detected for request ${options.method} ${options.url}`
-        );
-        if (options.request.retryCount <= 5) {
-          console.log(`Retrying after ${retryAfter} seconds!`);
-          return true;
-        }
-        return false;
-      },
-    },
-    authStrategy: createActionAuth,
-    userAgent: `my-octokit-action/v1.2.3`,
-  }) as unknown as CustomOctokitWithPlugins;
-}
 
 export type GithubCheckRun = {
   name: string;
