@@ -135,72 +135,72 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     this.checkHasHaltingError();
   }
 
-  /**
-   * @description Writes the comments to the PR in batches to avoid rate limits
-   * @param comments the list of comments to write
-   * @param action the action to take (POST or DELETE)
-   * @private
-   */
-  private async processCommentsInBatches(
-    comments: GithubComment[],
-    action: "POST" | "DELETE"
-  ) {
-    this.logger(
-      "Processing comments in batches: " +
-        comments.length +
-        " total comments. Batch size: " +
-        this.inputs.commentBatchSize +
-        " Total Number of Batches " +
-        comments.length / this.inputs.commentBatchSize
-    );
-    for (
-      let index = 0;
-      index < comments.length;
-      index += this.inputs.commentBatchSize
-    ) {
-      this.logger("Processing batch " + index);
-      const thisBatch = comments.slice(
-        index,
-        index + this.inputs.commentBatchSize
-      );
-      // this doesn't resolve until both the api calls and the wait time have passed, but it does both in parallel.
-      await Promise.all([
-        this.processAPIBatch(thisBatch, action),
-        new Promise((resolve) =>
-          setTimeout(resolve, this.inputs.rateLimitWaitTime)
-        ),
-      ]);
-      this.logger("Batch processed");
-    }
-  }
+  // /**
+  //  * @description Writes the comments to the PR in batches to avoid rate limits
+  //  * @param comments the list of comments to write
+  //  * @param action the action to take (POST or DELETE)
+  //  * @private
+  //  */
+  // private async processCommentsInBatches(
+  //   comments: GithubComment[],
+  //   action: "POST" | "DELETE"
+  // ) {
+  //   this.logger(
+  //     "Processing comments in batches: " +
+  //       comments.length +
+  //       " total comments. Batch size: " +
+  //       this.inputs.commentBatchSize +
+  //       " Total Number of Batches " +
+  //       comments.length / this.inputs.commentBatchSize
+  //   );
+  //   for (
+  //     let index = 0;
+  //     index < comments.length;
+  //     index += this.inputs.commentBatchSize
+  //   ) {
+  //     this.logger("Processing batch " + index);
+  //     const thisBatch = comments.slice(
+  //       index,
+  //       index + this.inputs.commentBatchSize
+  //     );
+  //     // this doesn't resolve until both the api calls and the wait time have passed, but it does both in parallel.
+  //     await Promise.all([
+  //       this.processAPIBatch(thisBatch, action),
+  //       new Promise((resolve) =>
+  //         setTimeout(resolve, this.inputs.rateLimitWaitTime)
+  //       ),
+  //     ]);
+  //     this.logger("Batch processed");
+  //   }
+  // }
 
-  private async processAPIBatch(
-    thisBatch: GithubComment[],
-    action: "POST" | "DELETE"
-  ) {
-    for (const comment of thisBatch) {
-      try {
-        switch (action) {
-          case "POST":
-            await this.performGithubRequest("POST", comment);
-            break;
-          case "DELETE":
-            await this.performGithubDeleteRequest(
-              comment as GithubExistingComment
-            );
-            break;
-        }
-      } catch (error) {
-        console.error(
-          `Error when processing comments: ${action} passed, resulting in: ${JSON.stringify(
-            error,
-            null,
-            2
-          )}`
-        );
-      }
-    }
-  }
+  // private async processAPIBatch(
+  //   thisBatch: GithubComment[],
+  //   action: "POST" | "DELETE"
+  // ) {
+  //   for (const comment of thisBatch) {
+  //     try {
+  //       switch (action) {
+  //         case "POST":
+  //           await this.performGithubRequest("POST", comment);
+  //           break;
+  //         case "DELETE":
+  //           await this.performGithubDeleteRequest(
+  //             comment as GithubExistingComment
+  //           );
+  //           break;
+  //       }
+  //     } catch (error) {
+  //       console.error(
+  //         `Error when processing comments: ${action} passed, resulting in: ${JSON.stringify(
+  //           error,
+  //           null,
+  //           2
+  //         )}`
+  //       );
+  //     }
+  //   }
+  // }
 
   /**
    * @description Filters out the comments that already exist on the PR. This was extracted from the write method
@@ -278,7 +278,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         )
     );
     this.logger("Resolved comments to delete: " + resolvedComments.length);
-    await this.processCommentsInBatches(resolvedComments, "DELETE");
+    for (const comment of resolvedComments) {
+      await this.performGithubDeleteRequest(comment);
+    }
   }
 
   /**

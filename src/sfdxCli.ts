@@ -104,10 +104,10 @@ export default class SfCLI {
     let result = null as T;
     try {
       const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-      const jsonPaylod = execSync(cliCommand, {
+      const jsonPayload = execSync(cliCommand, {
         maxBuffer: 10485760,
       }).toString();
-      result = (JSON.parse(jsonPaylod) as SfdxCommandResult<T>).result;
+      result = (JSON.parse(jsonPayload) as SfdxCommandResult<T>).result;
     } catch (err) {
       throw err;
     }
