@@ -1,8 +1,8 @@
 import * as core from "@actions/core";
-import { ScannerFlags } from "./sfdxCli.types.ts";
+import { ScannerFlags } from "./sfdxCli.types.js";
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
-import { fileExists } from "./common.ts";
+import { fileExists } from "./common.js";
 import { spawn } from "node:child_process";
 
 /**

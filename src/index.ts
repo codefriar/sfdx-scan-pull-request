@@ -11,7 +11,7 @@
    limitations under the License.
  */
 
-import SfScannerPullRequest from "./SfScannerPullRequest.ts";
+import SfScannerPullRequest from "./SfScannerPullRequest.js";
 
 /**
  * @description Because this file is the entry point of the action, it is the first file that is executed when the
