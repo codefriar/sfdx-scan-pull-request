@@ -11,7 +11,7 @@
    limitations under the License.
  */
 
-import SfScannerPullRequest from "./SfScannerPullRequest.js";
+import SfScannerPullRequest from "./SfScannerPullRequest.ts";
 
 /**
  * @description Because this file is the entry point of the action, it is the first file that is executed when the
@@ -19,9 +19,7 @@ import SfScannerPullRequest from "./SfScannerPullRequest.js";
  * the workflow. This function is asynchronous because the workflow is asynchronous.
  */
 async function main(): Promise<void> {
-  console.log("#### starting main function ####");
   let scanner = new SfScannerPullRequest();
-  console.log("#### created scanner, starting workflow ####");
   return await scanner.workflow();
 }
 
