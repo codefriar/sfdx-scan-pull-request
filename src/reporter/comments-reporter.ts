@@ -44,44 +44,38 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       prNumber ? `pulls/${prNumber}` : `commits/${context.sha}`
     }/comments`;
 
-    console.log("### Debug information for endpoint: " + endpoint);
-    console.log(
-      "### Debug information for optionalBody: " +
-        JSON.stringify(optionalBody, null, 2)
-    );
+    // if (method === "POST") {
+    //   try {
+    //     return this.octokit.request(endpoint, optionalBody) as Promise<T>;
+    //   } catch (error) {
+    //     console.error(
+    //       "Error when writing comments: " + JSON.stringify(error, null, 2)
+    //     );
+    //   }
+    // } else {
+    //   try {
+    //     console.log(
+    //       "### Debug information: Starting the call to get existing comments"
+    //     );
+    //     console.log(
+    //       "### Debug information type of octokit paginate: " +
+    //         typeof this.octokit.paginate
+    //     );
+    //     let results = await this.octokit.paginate(endpoint);
+    //     console.log("### Debug information for results: " + results);
+    //     return this.octokit.paginate(endpoint) as Promise<T>;
+    //   } catch (error) {
+    //     console.error(
+    //       "Error when reading comments: " + JSON.stringify(error, null, 2)
+    //     );
+    //   }
+    // }
 
-    if (method === "POST") {
-      try {
-        return this.octokit.request(endpoint, optionalBody) as Promise<T>;
-      } catch (error) {
-        console.error(
-          "Error when writing comments: " + JSON.stringify(error, null, 2)
-        );
-      }
-    } else {
-      try {
-        console.log(
-          "### Debug information: Starting the call to get existing comments"
-        );
-        console.log(
-          "### Debug information type of octokit paginate: " +
-            typeof this.octokit.paginate
-        );
-        let results = await this.octokit.paginate(endpoint);
-        console.log("### Debug information for results: " + results);
-        return this.octokit.paginate(endpoint) as Promise<T>;
-      } catch (error) {
-        console.error(
-          "Error when reading comments: " + JSON.stringify(error, null, 2)
-        );
-      }
-    }
-
-    // return (
-    //   method === "POST"
-    //     ? this.octokit.request(endpoint, optionalBody)
-    //     : this.octokit.paginate(endpoint)
-    // ) as Promise<T>;
+    return (
+      method === "POST"
+        ? this.octokit.request(endpoint, optionalBody)
+        : this.octokit.paginate(endpoint)
+    ) as Promise<T>;
   }
 
   /**
