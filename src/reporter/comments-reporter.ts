@@ -68,33 +68,44 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    * Uses the octokit to post the comments to the PR.
    */
   async write() {
-    this.logger("Writing comments using GitHub REST API...");
+    this.logger(
+      `Writing comments to PR ${context.payload.pull_request?.number} using GitHub REST API...`
+    );
+    // This gets any comments that have our hidden comment prefix
     const existingComments = await this.getExistingComments();
 
+    // This returns the difference between all issues and existing comments.
+    // The idea is that we'll discover here the issues that need net-new comments to be written.
     const netNewComments = await this.filterOutExistingComments(
       existingComments
     );
 
-    this.logger("Deleting resolved comments");
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
+      this.logger(
+        "As instructed in the inputs, the scanner is now deleting resolved comments"
+      );
       await this.deleteResolvedComments(this.issues, existingComments);
     }
+    // If there are no new comments to write, then we'll just log a message and return.
     if (netNewComments.length === 0) {
       console.error(
-        "The scanner found unresolved issues that have already been identified."
+        "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
       );
-      this.hasHaltingError = true;
     }
-    if (netNewComments.length > this.inputs.maxNumberOfComments) {
-      // If the number of violations is higher than the developer-specified maximum,
-      // then we'll write the violations to a file, attach that file, and write a single comment
-      // referencing the attached file.
+    if (
+      netNewComments.length >= 1 &&
+      netNewComments.length > this.inputs.maxNumberOfComments
+    ) {
+      // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
       this.logger(
         `Comment count threshold of ${this.inputs.maxNumberOfComments} exceeded, writing to artifact instead`
       );
       await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
-    } else {
+    } else if (
+      netNewComments.length >= 1 &&
+      netNewComments.length <= this.inputs.maxNumberOfComments
+    ) {
       for (let comment of netNewComments) {
         try {
           await this.performGithubRequest("POST", comment);
@@ -199,7 +210,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     try {
       // @ts-ignore
       result = await this.performGithubRequest<GithubExistingComment[]>("GET");
-      this.logger("Result of getExistingComments: " + result.length);
+      this.logger("Found: " + result.length + " existing comments");
       result = result.filter(
         (comment) =>
           comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
