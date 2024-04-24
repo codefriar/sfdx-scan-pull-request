@@ -88,23 +88,13 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
     // If there are no new comments to write, then we'll just log a message and return.
-    if (netNewComments.length === 0) {
-      console.error(
+    if (netNewComments.length < 1) {
+      console.log(
         "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
       );
-    }
-    if (
-      netNewComments.length >= 1 &&
-      netNewComments.length > this.inputs.maxNumberOfComments
-    ) {
-      // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
-      this.logger(
-        `Comment count threshold of ${this.inputs.maxNumberOfComments} exceeded, writing to artifact instead`
-      );
-      await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
     } else if (
       netNewComments.length >= 1 &&
-      netNewComments.length <= this.inputs.maxNumberOfComments
+      netNewComments.length < this.inputs.maxNumberOfComments
     ) {
       for (let comment of netNewComments) {
         try {
@@ -115,8 +105,13 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
           );
         }
       }
+    } else {
+      // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
+      this.logger(
+        `New issue count of ${netNewComments.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
+      );
+      await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
     }
-
     this.checkHasHaltingError();
   }
 
