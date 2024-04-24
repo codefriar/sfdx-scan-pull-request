@@ -76,9 +76,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
 
     // This returns the difference between all issues and existing comments.
     // The idea is that we'll discover here the issues that need net-new comments to be written.
-    const netNewComments = await this.filterOutExistingComments(
-      existingComments
-    );
+    const netNewIssues = await this.filterOutExistingComments(existingComments);
 
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
@@ -88,15 +86,15 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
     // If there are no new comments to write, then we'll just log a message and return.
-    if (netNewComments.length < 1) {
+    if (netNewIssues.length < 1) {
       console.log(
         "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
       );
     } else if (
-      netNewComments.length >= 1 &&
-      netNewComments.length < this.inputs.maxNumberOfComments
+      netNewIssues.length >= 1 &&
+      netNewIssues.length < this.inputs.maxNumberOfComments
     ) {
-      for (let comment of netNewComments) {
+      for (let comment of netNewIssues) {
         try {
           await this.performGithubRequest("POST", comment);
         } catch (error) {
@@ -108,9 +106,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     } else {
       // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
       this.logger(
-        `New issue count of ${netNewComments.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
+        `New issue count of ${netNewIssues.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
       );
-      await this.uploadCommentsAsArtifactAndPostComment(netNewComments);
+      await this.uploadCommentsAsArtifactAndPostComment(netNewIssues);
     }
     this.checkHasHaltingError();
   }
