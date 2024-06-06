@@ -3,12 +3,21 @@ import { ScannerViolation } from "../sfdxCli.types.js";
 import { setFailed } from "@actions/core";
 import { Reporter, ReporterProps } from "./reporter.types.js";
 import { Octokit } from "@octokit/core";
+import { requestLog } from "@octokit/plugin-request-log";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
+import { legacyRestEndpointMethods } from "@octokit/plugin-rest-endpoint-methods";
+export type { RestEndpointMethodTypes } from "@octokit/plugin-rest-endpoint-methods";
 import { throttling } from "@octokit/plugin-throttling";
 import { retry } from "@octokit/plugin-retry";
 import { createActionAuth } from "@octokit/auth-action";
 
-const CustomOctokit = Octokit.plugin(paginateRest, throttling, retry).defaults({
+const CustomOctokit = Octokit.plugin(
+  paginateRest,
+  throttling,
+  retry,
+  requestLog,
+  legacyRestEndpointMethods
+).defaults({
   throttle: {
     onRateLimit: (retryAfter, options) => {
       console.warn(

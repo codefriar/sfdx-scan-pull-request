@@ -51,6 +51,25 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     ) as Promise<T>;
   }
 
+  private async createOneReviewWithMultipleComments(comments: GithubComment[]) {
+    const owner = context.repo.owner;
+    const repo = context.repo.repo;
+    const prNumber = context.payload.pull_request?.number as number;
+    try {
+      const response = await this.octokit.rest.pulls.createReview({
+        owner,
+        repo,
+        pull_number: prNumber,
+        event: "COMMENT",
+        comments: comments,
+      });
+
+      console.log("Pull request review created successfully:", response.data);
+    } catch (error) {
+      console.error("Error creating pull request review:", error);
+    }
+  }
+
   /**
    * Delete a single GitHub comment
    * @param comment Comment to delete
@@ -86,30 +105,34 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       await this.deleteResolvedComments(this.issues, existingComments);
     }
     // If there are no new comments to write, then we'll just log a message and return.
-    if (netNewIssues.length < 1) {
-      console.log(
-        "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
-      );
-    } else if (
-      netNewIssues.length >= 1 &&
-      netNewIssues.length < this.inputs.maxNumberOfComments
-    ) {
-      for (let comment of netNewIssues) {
-        try {
-          await this.performGithubRequest("POST", comment);
-        } catch (error) {
-          console.error(
-            "Error when writing comments: " + JSON.stringify(error, null, 2)
-          );
-        }
-      }
-    } else {
-      // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
-      this.logger(
-        `New issue count of ${netNewIssues.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
-      );
-      await this.uploadCommentsAsArtifactAndPostComment(netNewIssues);
-    }
+
+    await this.createOneReviewWithMultipleComments(netNewIssues);
+
+    // Turning this off for a bit during testing.
+    // if (netNewIssues.length < 1) {
+    //   console.log(
+    //     "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
+    //   );
+    // } else if (
+    //   netNewIssues.length >= 1 &&
+    //   netNewIssues.length < this.inputs.maxNumberOfComments
+    // ) {
+    //   for (let comment of netNewIssues) {
+    //     try {
+    //       await this.performGithubRequest("POST", comment);
+    //     } catch (error) {
+    //       console.error(
+    //         "Error when writing comments: " + JSON.stringify(error, null, 2)
+    //       );
+    //     }
+    //   }
+    // } else {
+    //   // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
+    //   this.logger(
+    //     `New issue count of ${netNewIssues.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
+    //   );
+    //   await this.uploadCommentsAsArtifactAndPostComment(netNewIssues);
+    // }
     this.checkHasHaltingError();
   }
 
