@@ -56,6 +56,15 @@ export type GithubComment = {
   url?: string;
 };
 
+export type GithubReviewComment = {
+  path: string;
+  start_line: number;
+  start_side: GithubCommentSide;
+  side: GithubCommentSide;
+  line: number;
+  body: string;
+};
+
 export type GithubExistingComment = GithubComment & {
   user: {
     type: "Bot" | "User";

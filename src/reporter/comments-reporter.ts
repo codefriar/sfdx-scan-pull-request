@@ -14,7 +14,11 @@
 import { getGithubFilePath, getScannerViolationType } from "../common.js";
 
 import { context } from "@actions/github";
-import { GithubComment, GithubExistingComment } from "./reporter.types.js";
+import {
+  GithubComment,
+  GithubExistingComment,
+  GithubReviewComment,
+} from "./reporter.types.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
@@ -56,12 +60,23 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const prNumber = context.payload.pull_request?.number as number;
 
+    const githubReviewComments: GithubReviewComment[] = comments.map(
+      (comment) => ({
+        path: comment.path,
+        start_line: comment.start_line,
+        start_side: comment.start_side,
+        side: comment.side,
+        line: comment.line,
+        body: comment.body,
+      })
+    );
+
     try {
       const response = await this.octokit.rest.pulls.createReview({
         owner,
         repo,
         pull_number: prNumber,
-        comments: comments,
+        comments: githubReviewComments,
         commit_id: context.sha,
         body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
         event: "REQUEST_CHANGES",
