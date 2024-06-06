@@ -55,13 +55,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const owner = context.repo.owner;
     const repo = context.repo.repo;
     const prNumber = context.payload.pull_request?.number as number;
+
     try {
       const response = await this.octokit.rest.pulls.createReview({
         owner,
         repo,
         pull_number: prNumber,
-        event: "COMMENT",
         comments: comments,
+        commit_id: context.sha,
+        body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
+        event: "REQUEST_CHANGES",
       });
 
       console.log("Pull request review created successfully:", response.data);
