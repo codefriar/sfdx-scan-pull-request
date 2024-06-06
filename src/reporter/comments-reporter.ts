@@ -72,7 +72,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     );
 
     try {
-      const response = await this.octokit.rest.pulls.createReview({
+      const response = await this.octokit.pulls.createReview({
         owner,
         repo,
         pull_number: prNumber,
