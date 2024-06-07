@@ -62,7 +62,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
-    console.log("###### First Comment - raw: " + comments[0]);
+    console.log(
+      "###### First Comment - raw: " + JSON.stringify(comments[0], null, 2)
+    );
 
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => ({
@@ -83,7 +85,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       comments: githubReviewComments,
     };
 
-    console.log("###### jsonBody: \n", jsonBody);
+    console.log("###### jsonBody: \n", JSON.stringify(jsonBody, null, 2));
 
     try {
       await this.octokit.request(`POST ${apiUrl}`, {
