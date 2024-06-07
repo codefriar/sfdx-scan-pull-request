@@ -69,20 +69,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         start_side: comment.start_side,
         side: comment.side,
         line: comment.line + 1,
-        body: comment.body,
+        body: comment.body.toString().replace("\n", ""),
       })
     );
 
     const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
 
     const jsonBody = {
-      body: {
-        body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
-        event: "REQUEST_CHANGES",
-        comments: githubReviewComments,
-      },
+      body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
       event: "REQUEST_CHANGES",
-      comments: comments,
+      comments: githubReviewComments,
     };
 
     console.log("###### jsonBody: \n", jsonBody);
