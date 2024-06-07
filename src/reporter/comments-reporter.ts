@@ -65,7 +65,10 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => ({
         path: comment.path,
-        body: comment.body.toString().replace(/\n/g, "\n"),
+        body: comment.body
+          .split("\n")
+          .map((line) => line.trim())
+          .join("\n"),
         line: comment.line + 1,
         side: comment.side,
         start_line: comment.start_line,
