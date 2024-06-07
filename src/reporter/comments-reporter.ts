@@ -83,6 +83,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         comments: githubReviewComments,
       } as RequestParameters;
       console.debug(JSON.stringify(params, null, 2));
+      //comment
       // @ts-ignore
       const response = await this.octokit.pulls.createReview(params);
 
