@@ -23,6 +23,7 @@ import { ScannerViolation } from "../sfdxCli.types.js";
 import { promises as fs } from "fs";
 import { DefaultArtifactClient } from "@actions/artifact";
 import { BaseReporter } from "./base-reporter.js";
+import { RequestParameters } from "@octokit/types";
 
 const ERROR = "Error";
 
@@ -72,15 +73,18 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     );
 
     try {
-      const response = await this.octokit.pulls.createReview({
+      const params = {
         owner,
         repo,
         pull_number: prNumber,
-        comments: githubReviewComments,
-        commit_id: context.sha,
+        commit_id: this.context.sha,
         body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
-        event: "REQUEST_CHANGES",
-      });
+        event: "COMMENT",
+        comments: githubReviewComments,
+      } as RequestParameters;
+      console.debug(JSON.stringify(params, null, 2));
+      // @ts-ignore
+      const response = await this.octokit.pulls.createReview(params);
 
       console.log("Pull request review created successfully:", response.data);
     } catch (error) {
