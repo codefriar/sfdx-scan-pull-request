@@ -62,6 +62,10 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
+    console.log(
+      "###### First Comment - raw: " + JSON.stringify(comments[0], null, 2)
+    );
+
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => ({
         path: comment.path,
