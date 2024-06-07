@@ -60,7 +60,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   private async createOneReviewWithMultipleComments(comments: GithubComment[]) {
     const owner = context.repo.owner;
     const repo = context.repo.repo;
-    const prNumber = context.payload.pull_request?.number as number;
+    const pullRequestNumber = context.payload.pull_request?.number as number;
 
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => ({
@@ -73,21 +73,43 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       })
     );
 
-    try {
-      const params = {
+    const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
+
+    const jsonBody = {
+      body: {
         body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
         event: "REQUEST_CHANGES",
         comments: githubReviewComments,
-      } as RequestParameters;
-      console.debug(JSON.stringify(params, null, 2));
-      //comment
-      // @ts-ignore
-      const response = await this.octokit.pulls.createReview(params);
+      },
+      event: "REQUEST_CHANGES",
+      comments: comments,
+    };
 
-      console.log("Pull request review created successfully:", response.data);
+    console.log("###### jsonBody: \n", jsonBody);
+
+    try {
+      await this.octokit.request(`POST ${apiUrl}`, {
+        data: jsonBody,
+      });
     } catch (error) {
       console.error("Error creating pull request review:", error);
     }
+
+    // try {
+    //   const params = {
+    //     body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
+    //     event: "REQUEST_CHANGES",
+    //     comments: githubReviewComments,
+    //   } as RequestParameters;
+    //   console.debug(JSON.stringify(params, null, 2));
+    //   //comment
+    //   // @ts-ignore
+    //   const response = await this.octokit.pulls.createReview(params);
+    //
+    //   console.log("Pull request review created successfully:", response.data);
+    // } catch (error) {
+    //   console.error("Error creating pull request review:", error);
+    // }
   }
 
   /**
