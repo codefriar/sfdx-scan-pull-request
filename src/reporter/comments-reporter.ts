@@ -57,55 +57,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     ) as Promise<T>;
   }
 
-  private async createReviewWithCommentsViaGraphQl(comments: GithubComment[]) {
-    // Create an instance of the Octokit GraphQL client
-    const graphqlWithAuth = graphql.defaults({
-      headers: {
-        authorization: `token ${process.env.GITHUB_TOKEN}`,
-      },
-    });
-
-    const repositoryId = context.repo.repo;
-    const pullRequestId = context.payload.pull_request?.number;
-
-    try {
-      // Prepare the GraphQL mutation
-      const mutation = `
-      mutation ($repositoryId: ID!, $pullRequestId: ID!, $comments: [DraftPullRequestReviewComment!]!) {
-        addPullRequestReview(input: {
-          repositoryId: $repositoryId,
-          pullRequestId: $pullRequestId,
-          event: COMMENT,
-          comments: $comments
-        }) {
-          clientMutationId
-        }
-      }
-    `;
-
-      // Prepare the variables for the mutation
-      const variables = {
-        repositoryId,
-        pullRequestId,
-        comments: comments.map((comment) => ({
-          path: comment.path,
-          body: comment.body,
-          line: comment.line,
-          side: comment.side,
-          startLine: comment.start_line,
-          startSide: comment.start_side,
-        })),
-      };
-
-      // Execute the GraphQL mutation
-      await graphqlWithAuth(mutation, variables);
-
-      console.log("Review created with comments");
-    } catch (error) {
-      console.error("Error creating review with comments:", error);
-    }
-  }
-
   private async createOneReviewWithMultipleComments(comments: GithubComment[]) {
     const owner = context.repo.owner;
     const repo = context.repo.repo;
@@ -117,7 +68,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         start_line: comment.start_line,
         start_side: comment.start_side,
         side: comment.side,
-        line: comment.line,
+        line: comment.line + 1,
         body: comment.body,
       })
     );
@@ -129,7 +80,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         pull_number: prNumber,
         commit_id: this.context.sha,
         body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
-        event: "COMMENT",
+        event: "REQUEST_CHANGES",
         comments: githubReviewComments,
       } as RequestParameters;
       console.debug(JSON.stringify(params, null, 2));
@@ -179,7 +130,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     }
     // If there are no new comments to write, then we'll just log a message and return.
 
-    await this.createReviewWithCommentsViaGraphQl(netNewIssues);
+    await this.createOneReviewWithMultipleComments(netNewIssues);
 
     // Turning this off for a bit during testing.
     // if (netNewIssues.length < 1) {

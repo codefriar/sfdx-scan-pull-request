@@ -1,0 +1,18 @@
+[
+  {
+    "path": "/force-app/main/default/classes/VCC/DAS/VCC_DAS_FlowIsValidEsig.cls",
+    "body": "This is a comment on line 10",
+    "line": 10,
+    "side": "RIGHT",
+    "start_line": 10,
+    "start_side": "RIGHT"
+  },
+  {
+    "path": "/force-app/main/default/classes/VCC/DAS/VCC_DAS_FlowIsValidEsig.cls",
+    "body": "This is a comment on line 5",
+    "line": 5,
+    "side": "RIGHT",
+    "start_line": 5,
+    "start_side": "RIGHT"
+  }
+]
