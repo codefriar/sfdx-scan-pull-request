@@ -69,7 +69,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         start_side: comment.start_side,
         side: comment.side,
         line: comment.line + 1,
-        body: comment.body.toString().replace("\n", ""),
+        body: comment.body.toString().replace(/\n/g, "\\n"),
       })
     );
 
