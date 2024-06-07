@@ -12,6 +12,7 @@
  */
 
 import { getGithubFilePath, getScannerViolationType } from "../common.js";
+import { graphql } from "@octokit/graphql";
 
 import { context } from "@actions/github";
 import {
@@ -54,6 +55,55 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         ? this.octokit.request(endpoint, optionalBody)
         : this.octokit.paginate(endpoint)
     ) as Promise<T>;
+  }
+
+  private async createReviewWithCommentsViaGraphQl(comments: GithubComment[]) {
+    // Create an instance of the Octokit GraphQL client
+    const graphqlWithAuth = graphql.defaults({
+      headers: {
+        authorization: `token ${process.env.GITHUB_TOKEN}`,
+      },
+    });
+
+    const repositoryId = context.repo.repo;
+    const pullRequestId = context.payload.pull_request?.number;
+
+    try {
+      // Prepare the GraphQL mutation
+      const mutation = `
+      mutation ($repositoryId: ID!, $pullRequestId: ID!, $comments: [DraftPullRequestReviewComment!]!) {
+        addPullRequestReview(input: {
+          repositoryId: $repositoryId,
+          pullRequestId: $pullRequestId,
+          event: COMMENT,
+          comments: $comments
+        }) {
+          clientMutationId
+        }
+      }
+    `;
+
+      // Prepare the variables for the mutation
+      const variables = {
+        repositoryId,
+        pullRequestId,
+        comments: comments.map((comment) => ({
+          path: comment.path,
+          body: comment.body,
+          line: comment.line,
+          side: comment.side,
+          startLine: comment.start_line,
+          startSide: comment.start_side,
+        })),
+      };
+
+      // Execute the GraphQL mutation
+      await graphqlWithAuth(mutation, variables);
+
+      console.log("Review created with comments");
+    } catch (error) {
+      console.error("Error creating review with comments:", error);
+    }
   }
 
   private async createOneReviewWithMultipleComments(comments: GithubComment[]) {
@@ -129,7 +179,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     }
     // If there are no new comments to write, then we'll just log a message and return.
 
-    await this.createOneReviewWithMultipleComments(netNewIssues);
+    await this.createReviewWithCommentsViaGraphQl(netNewIssues);
 
     // Turning this off for a bit during testing.
     // if (netNewIssues.length < 1) {
