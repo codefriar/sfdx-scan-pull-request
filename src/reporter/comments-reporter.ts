@@ -71,7 +71,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         path: comment.path,
         body: `${comment.body}`,
         line:
-          comment.line < comment.start_line ? comment.line : comment.line + 1,
+          comment.line > comment.start_line ? comment.line : comment.line + 1,
         side: comment.side,
         start_line: comment.start_line,
         start_side: comment.start_side,
