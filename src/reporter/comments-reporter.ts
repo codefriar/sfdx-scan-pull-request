@@ -12,8 +12,6 @@
  */
 
 import { getGithubFilePath, getScannerViolationType } from "../common.js";
-import { graphql } from "@octokit/graphql";
-
 import { context } from "@actions/github";
 import {
   GithubComment,
@@ -21,15 +19,11 @@ import {
   GithubReviewComment,
 } from "./reporter.types.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
-import { promises as fs } from "fs";
-import { DefaultArtifactClient } from "@actions/artifact";
 import { BaseReporter } from "./base-reporter.js";
-import { RequestParameters } from "@octokit/types";
 
 const ERROR = "Error";
 
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
-const COMMENTS_FILE_NAME = "sfdx-scanner-comments.md";
 
 export class CommentsReporter extends BaseReporter<GithubComment> {
   /**
@@ -57,14 +51,15 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     ) as Promise<T>;
   }
 
+  /**
+   * @description Creates a single review with multiple comments, all in one api call.
+   * @param comments a list of comments to be included in the review.
+   * @private
+   */
   private async createOneReviewWithMultipleComments(comments: GithubComment[]) {
     const owner = context.repo.owner;
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
-
-    console.log(
-      "###### First Comment - raw: " + JSON.stringify(comments[0], null, 2)
-    );
 
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => ({
@@ -86,31 +81,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       comments: githubReviewComments,
     };
 
-    console.log("###### jsonBody: \n", JSON.stringify(jsonBody, null, 2));
-
     try {
       await this.octokit.request(`POST ${apiUrl}`, {
         data: jsonBody,
       });
     } catch (error) {
-      console.error("Error creating pull request review:", error);
+      console.error(
+        "Error creating pull request review:",
+        JSON.stringify(error, null, 2)
+      );
     }
-
-    // try {
-    //   const params = {
-    //     body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
-    //     event: "REQUEST_CHANGES",
-    //     comments: githubReviewComments,
-    //   } as RequestParameters;
-    //   console.debug(JSON.stringify(params, null, 2));
-    //   //comment
-    //   // @ts-ignore
-    //   const response = await this.octokit.pulls.createReview(params);
-    //
-    //   console.log("Pull request review created successfully:", response.data);
-    // } catch (error) {
-    //   console.error("Error creating pull request review:", error);
-    // }
   }
 
   /**
@@ -151,31 +131,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
 
     await this.createOneReviewWithMultipleComments(netNewIssues);
 
-    // Turning this off for a bit during testing.
-    // if (netNewIssues.length < 1) {
-    //   console.log(
-    //     "The scanner found no new issues that have not already had comments generated for them (and possibly resolved)."
-    //   );
-    // } else if (
-    //   netNewIssues.length >= 1 &&
-    //   netNewIssues.length < this.inputs.maxNumberOfComments
-    // ) {
-    //   for (let comment of netNewIssues) {
-    //     try {
-    //       await this.performGithubRequest("POST", comment);
-    //     } catch (error) {
-    //       console.error(
-    //         "Error when writing comments: " + JSON.stringify(error, null, 2)
-    //       );
-    //     }
-    //   }
-    // } else {
-    //   // If we have net-new comments that exceed the max number of comments, we'll write them to an artifact instead.
-    //   this.logger(
-    //     `New issue count of ${netNewIssues.length} is in excess of threshold value of ${this.inputs.maxNumberOfComments}, writing to artifact instead`
-    //   );
-    //   await this.uploadCommentsAsArtifactAndPostComment(netNewIssues);
-    // }
     this.checkHasHaltingError();
   }
 
@@ -195,50 +150,11 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   }
 
   /**
-   * @description Writes the comments to a file and uploads the file as an artifact. Also posts a comment on the PR.
-   * @param comments
-   * @private
-   */
-  private async uploadCommentsAsArtifactAndPostComment(
-    comments: GithubComment[]
-  ) {
-    await fs.writeFile(
-      COMMENTS_FILE_NAME,
-      comments.map((comment) => comment.body).join("\n\n")
-    );
-    try {
-      let artifactResponse = await new DefaultArtifactClient().uploadArtifact(
-        COMMENTS_FILE_NAME,
-        [COMMENTS_FILE_NAME],
-        process.cwd()
-      );
-      console.log(
-        "Artifact upload response: " + JSON.stringify(artifactResponse, null, 2)
-      );
-    } catch (error) {
-      console.error(
-        "Error when uploading artifact: " + JSON.stringify(error, null, 2)
-      );
-    }
-    try {
-      const comment = {
-        body: `sf scanner run found too many violations and was unable to upload them all as individual comments. Instead, all findings have been written to this PR as an artifact. See the attached artifact for details.`,
-        commit_id: this.issues[0]?.commit_id,
-        path: this.issues[0]?.path,
-        line: 1,
-      } as GithubComment;
-      await this.performGithubRequest("POST", comment);
-    } catch (error) {
-      console.error(
-        "Failed to upload artifact or post comment: " +
-          JSON.stringify(error, null, 2)
-      );
-    }
-  }
-
-  /**
    * @description Deletes all comments that have been detected as resolved.
    * Deletion is used because resolving is not available in the REST API
+   *
+   * Note: A comment is considered resolved if the issue that triggered it is no longer present in the PR.
+   *
    * @param newComments
    * @param existingComments
    * @private

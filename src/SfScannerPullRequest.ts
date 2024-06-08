@@ -270,7 +270,7 @@ export default class SfScannerPullRequest {
     try {
       this.reporter.write();
     } catch (e) {
-      console.error(e);
+      console.error(JSON.stringify(e, null, 2));
       setFailed("An error occurred while trying to write to GitHub");
     }
 
