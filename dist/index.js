@@ -71463,21 +71463,30 @@ class CommentsReporter extends BaseReporter {
         const repo = github.context.repo.repo;
         const prNumber = github.context.payload.pull_request?.number;
         const query = `
-      query {
-        repository(owner: "${owner}", name: "${repo}") {
-          pullRequest(number: ${prNumber}) {
-            reviewThreads(last: 100) {
+      query GetPRReviewThreads($owner: String!, $repo: String!, $prNumber: Int!) {
+        repository(owner: $owner, name: $repo) {
+          pullRequest(number: $prNumber) {
+            reviewThreads(first: 100) {
               nodes {
+                id
                 isResolved
                 comments(first: 100) {
                   nodes {
-                    id
+                    commit {
+                      oid
+                    }
+                    body
+                    startLine
+                    line
+                    url
+                    path
                   }
                 }
               }
             }
           }
-        }`;
+        }
+      }`;
         const result = await this.octokit.graphql(query, {
             owner: owner,
             repo: repo,
