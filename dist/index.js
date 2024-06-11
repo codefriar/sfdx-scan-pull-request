@@ -71478,7 +71478,11 @@ class CommentsReporter extends BaseReporter {
             }
           }
         }`;
-        const result = await this.octokit.graphql(query);
+        const result = await this.octokit.graphql(query, {
+            owner: owner,
+            repo: repo,
+            prNumber: prNumber,
+        });
         // Filter out only resolved threads and map to get only the bodies of the comments
         const resolvedComments = result.repository.pullRequest.reviewThreads.nodes
             .filter((thread) => thread.isResolved)

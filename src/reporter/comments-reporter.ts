@@ -133,7 +133,12 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         }`;
 
     const result: GraphQLResponse = await this.octokit.graphql<GraphQLResponse>(
-      query
+      query,
+      {
+        owner: owner,
+        repo: repo,
+        prNumber: prNumber,
+      }
     );
     // Filter out only resolved threads and map to get only the bodies of the comments
     const resolvedComments: GithubComment[] =
