@@ -18,10 +18,9 @@ import {
   GithubExistingComment,
   GithubReviewComment,
 } from "./reporter.types.js";
+import { GraphQLResponse } from "../githubGraphQLTypes.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { BaseReporter } from "./base-reporter.js";
-
-const ERROR = "Error";
 
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
 
@@ -106,6 +105,57 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
   }
 
   /**
+   * @description pull the Pull Request review threads that are resolved for this PR using the GraphQL Api
+   * we'll use these to determine which comments are resolved and can be ignored - and not throw a halting error.
+   * @private
+   */
+
+  private async fetchResolvedReviewCommentThreads(): Promise<GithubComment[]> {
+    const owner = context.repo.owner;
+    const repo = context.repo.repo;
+    const prNumber = context.payload.pull_request?.number;
+
+    const query = `
+      query {
+        repository(owner: "${owner}", name: "${repo}") {
+          pullRequest(number: ${prNumber}) {
+            reviewThreads(last: 100) {
+              nodes {
+                isResolved
+                comments(first: 100) {
+                  nodes {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }`;
+
+    const result: GraphQLResponse = await this.octokit.graphql<GraphQLResponse>(
+      query
+    );
+    // Filter out only resolved threads and map to get only the bodies of the comments
+    const resolvedComments: GithubComment[] =
+      result.repository.pullRequest.reviewThreads.nodes
+        .filter((thread) => thread.isResolved)
+        .flatMap((thread) =>
+          thread.comments.nodes.map((comment) => ({
+            commit_id: comment.commit.oid,
+            path: comment.path,
+            start_line: comment.startLine,
+            start_side: "RIGHT",
+            side: "RIGHT",
+            line: comment.line,
+            body: comment.body,
+            url: comment.url,
+          }))
+        );
+    console.log(JSON.stringify(resolvedComments, null, 2));
+    return resolvedComments;
+  }
+
+  /**
    * @description Writes the relevant comments to the GitHub pull request.
    * Uses the octokit to post the comments to the PR.
    */
@@ -119,7 +169,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     // This returns the difference between all issues and existing comments.
     // The idea is that we'll discover here the issues that need net-new comments to be written.
     const netNewIssues = await this.filterOutExistingComments(existingComments);
-
     // moving this up the stack to enable deleting resolved comments before trying to write new ones
     if (this.inputs.deleteResolvedComments) {
       this.logger(
@@ -129,7 +178,13 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     }
     // If there are no new comments to write, then we'll just log a message and return.
 
+    // At this point, if we have any "new issues" i.e. issues that have not been resolved either through the ui
+    // or through a code change should be written to the PR as review comments and should block the build.
     await this.createOneReviewWithMultipleComments(netNewIssues);
+
+    if (netNewIssues.length > 0) {
+      this.hasHaltingError = true;
+    }
 
     this.checkHasHaltingError();
   }
@@ -142,9 +197,18 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
    */
   private async filterOutExistingComments(existingComments: GithubComment[]) {
     // iterate over the issues and filter out any that do not have existing comments
-    return this.issues.filter((issue) => {
+    // pull the Pull Request review threads that are resolved for this PR
+    const resolvedComments = await this.fetchResolvedReviewCommentThreads();
+    const newIssues = this.issues.filter((issue) => {
       return !existingComments.find((existingComment) =>
         this.matchComment(issue, existingComment)
+      );
+    });
+
+    // Filter out resolved comments
+    return newIssues.filter((issue) => {
+      return !resolvedComments.find((resolvedComment) =>
+        this.matchComment(issue, resolvedComment)
       );
     });
   }
@@ -248,9 +312,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       violation,
       engine
     );
-    if (violationType === ERROR) {
-      this.hasHaltingError = true;
-    }
+    // if (violationType === ERROR) {
+    //   this.hasHaltingError = true;
+    // }
     const commit_id = this.context.payload.pull_request
       ? this.context.payload.pull_request.head.sha
       : this.context.sha;

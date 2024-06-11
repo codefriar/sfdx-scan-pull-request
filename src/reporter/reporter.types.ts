@@ -86,4 +86,4 @@ export interface Reporter {
   ): void;
 }
 
-type GithubCommentSide = "RIGHT";
+export type GithubCommentSide = "RIGHT";

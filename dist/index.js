@@ -71393,7 +71393,6 @@ class BaseReporter {
 
 
 
-const ERROR = "Error";
 const HIDDEN_COMMENT_PREFIX = "<!--sfdx-scanner-->";
 class CommentsReporter extends BaseReporter {
     /**
@@ -71455,6 +71454,48 @@ class CommentsReporter extends BaseReporter {
         await this.octokit.request(endpoint);
     }
     /**
+     * @description pull the Pull Request review threads that are resolved for this PR using the GraphQL Api
+     * we'll use these to determine which comments are resolved and can be ignored - and not throw a halting error.
+     * @private
+     */
+    async fetchResolvedReviewCommentThreads() {
+        const owner = github.context.repo.owner;
+        const repo = github.context.repo.repo;
+        const prNumber = github.context.payload.pull_request?.number;
+        const query = `
+      query {
+        repository(owner: "${owner}", name: "${repo}") {
+          pullRequest(number: ${prNumber}) {
+            reviewThreads(last: 100) {
+              nodes {
+                isResolved
+                comments(first: 100) {
+                  nodes {
+                    id
+                  }
+                }
+              }
+            }
+          }
+        }`;
+        const result = await this.octokit.graphql(query);
+        // Filter out only resolved threads and map to get only the bodies of the comments
+        const resolvedComments = result.repository.pullRequest.reviewThreads.nodes
+            .filter((thread) => thread.isResolved)
+            .flatMap((thread) => thread.comments.nodes.map((comment) => ({
+            commit_id: comment.commit.oid,
+            path: comment.path,
+            start_line: comment.startLine,
+            start_side: "RIGHT",
+            side: "RIGHT",
+            line: comment.line,
+            body: comment.body,
+            url: comment.url,
+        })));
+        console.log(JSON.stringify(resolvedComments, null, 2));
+        return resolvedComments;
+    }
+    /**
      * @description Writes the relevant comments to the GitHub pull request.
      * Uses the octokit to post the comments to the PR.
      */
@@ -71471,7 +71512,12 @@ class CommentsReporter extends BaseReporter {
             await this.deleteResolvedComments(this.issues, existingComments);
         }
         // If there are no new comments to write, then we'll just log a message and return.
+        // At this point, if we have any "new issues" i.e. issues that have not been resolved either through the ui
+        // or through a code change should be written to the PR as review comments and should block the build.
         await this.createOneReviewWithMultipleComments(netNewIssues);
+        if (netNewIssues.length > 0) {
+            this.hasHaltingError = true;
+        }
         this.checkHasHaltingError();
     }
     /**
@@ -71482,8 +71528,14 @@ class CommentsReporter extends BaseReporter {
      */
     async filterOutExistingComments(existingComments) {
         // iterate over the issues and filter out any that do not have existing comments
-        return this.issues.filter((issue) => {
+        // pull the Pull Request review threads that are resolved for this PR
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
+        const newIssues = this.issues.filter((issue) => {
             return !existingComments.find((existingComment) => this.matchComment(issue, existingComment));
+        });
+        // Filter out resolved comments
+        return newIssues.filter((issue) => {
+            return !resolvedComments.find((resolvedComment) => this.matchComment(issue, resolvedComment));
         });
     }
     /**
@@ -71558,9 +71610,9 @@ class CommentsReporter extends BaseReporter {
             endLine++;
         }
         const violationType = getScannerViolationType(this.inputs, violation, engine);
-        if (violationType === ERROR) {
-            this.hasHaltingError = true;
-        }
+        // if (violationType === ERROR) {
+        //   this.hasHaltingError = true;
+        // }
         const commit_id = this.context.payload.pull_request
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
@@ -71621,7 +71673,7 @@ var action_dist_node = __nccwpck_require__(1231);
 
 
 
-const annoations_reporter_ERROR = "Error";
+const ERROR = "Error";
 const RIGHT = "RIGHT";
 class AnnotationsReporter extends BaseReporter {
     /**
@@ -71681,7 +71733,7 @@ class AnnotationsReporter extends BaseReporter {
      */
     translateViolationToReport(filePath, violation, engine) {
         const violationType = getScannerViolationType(this.inputs, violation, engine);
-        if (violationType === annoations_reporter_ERROR) {
+        if (violationType === ERROR) {
             this.hasHaltingError = true;
         }
         let endLine = violation.endLine
