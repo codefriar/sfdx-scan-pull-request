@@ -218,6 +218,7 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
         `Failing the build due to ${unresolvedExistingComments.length} unresolved existing comments.`
       );
       this.hasHaltingError = true;
+      this.checkHasHaltingError();
     }
 
     // If there are no new comments to write, then log a message and return.

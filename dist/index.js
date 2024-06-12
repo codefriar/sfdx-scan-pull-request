@@ -71535,6 +71535,7 @@ class CommentsReporter extends BaseReporter {
         if (unresolvedExistingComments.length > 0) {
             this.logger(`Failing the build due to ${unresolvedExistingComments.length} unresolved existing comments.`);
             this.hasHaltingError = true;
+            this.checkHasHaltingError();
         }
         // If there are no new comments to write, then log a message and return.
         if (netNewIssues.length === 0) {
