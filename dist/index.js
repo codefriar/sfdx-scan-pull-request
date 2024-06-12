@@ -71513,7 +71513,7 @@ class CommentsReporter extends BaseReporter {
      * Uses the octokit to post the comments to the PR.
      */
     async write() {
-        this.logger(`Processing ${this.issues.length} discovered issues on PR ${github.context.payload.pull_request?.number}. Note: some may be pre-existing or resolved.`);
+        this.logger(`Scanner found ${this.issues.length} issues on PR ${github.context.payload.pull_request?.number}. Note: some may be pre-existing or resolved.`);
         // This gets any comments that have our hidden comment prefix
         const existingComments = await this.getExistingComments();
         this.logger(`Found ${existingComments.length} existing comments with the hidden comment prefix indicating the Scanner as the author.`);
@@ -71523,14 +71523,29 @@ class CommentsReporter extends BaseReporter {
         this.logger(`Found ${netNewIssues.length} new issues that do not have an existing comment or a resolved comment thread.`);
         // moving this up the stack to enable deleting resolved comments before trying to write new ones
         if (this.inputs.deleteResolvedComments) {
-            this.logger(`$`);
             await this.deleteResolvedComments(this.issues, existingComments);
         }
         // If there are no new comments to write, then we'll just log a message and return.
+        // Fetch resolved review comment threads
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
+        // Identify unresolved existing comments
+        const unresolvedExistingComments = existingComments.filter((existingComment) => !resolvedComments.find((resolvedComment) => this.matchComment(existingComment, resolvedComment)));
+        this.logger(`Found ${unresolvedExistingComments.length} unresolved existing comments.`);
+        // Flag the build if there are unresolved existing comments
+        if (unresolvedExistingComments.length > 0) {
+            this.logger(`Failing the build due to ${unresolvedExistingComments.length} unresolved existing comments.`);
+            this.hasHaltingError = true;
+        }
+        // If there are no new comments to write, then log a message and return.
+        if (netNewIssues.length === 0) {
+            this.logger("No new issues to report.");
+            return;
+        }
         // At this point, if we have any "new issues" i.e. issues that have not been resolved either through the ui
         // or through a code change should be written to the PR as review comments and should block the build.
         this.logger(`${this.issues.length - netNewIssues.length} new issues found. Creating a new review with ${netNewIssues.length} comments.`);
         await this.createOneReviewWithMultipleComments(netNewIssues);
+        // need a comparison count between the issues and the to delete, and resolved. to discover count of unresolved issues
         this.logger("Comments have been written to the Pr review. Check the PR for more details.");
         if (netNewIssues.length > 0) {
             this.logger(`Failing the build due to ${netNewIssues.length} new issues found.`);
@@ -71569,7 +71584,9 @@ class CommentsReporter extends BaseReporter {
     async deleteResolvedComments(newComments, existingComments) {
         // Get all existing comments that are *not* in the new comments
         const resolvedComments = existingComments.filter((existingComment) => !newComments.find((newComment) => this.matchComment(existingComment, newComment)));
-        this.logger(`${resolvedComments.length} comments were previously found, but have been resolved via code commits. Deleting...`);
+        if (resolvedComments.length > 0) {
+            this.logger(`${resolvedComments.length} comments were previously found, but have been resolved via code commits. Deleting...`);
+        }
         for (const comment of resolvedComments) {
             await this.performGithubDeleteRequest(comment);
         }
