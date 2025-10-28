@@ -1,5 +1,5 @@
 name: "SFDX Scan Pull Request"
-description: "Executes SFDX Scanner on the scope of a pull request, translates the findings into in-line comments."
+description: "Executes Salesforce Code Analyzer (v5) on the scope of a pull request, translates the findings into in-line comments."
 inputs:
   category:
     description: "Categor(ies) of rules to run."

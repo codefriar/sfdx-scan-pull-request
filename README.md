@@ -1,6 +1,6 @@
 # sfdx-scan-pull-request
 
-Runs sfdx-scanner on a pull request or individual commit and generates in-line comments with the findings.
+Runs Salesforce Code Analyzer (v5) on a pull request or individual commit and generates in-line comments with the findings.
 
 ![Example](images/sfdx-scan-pull-request.png)
 
@@ -122,12 +122,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Install SFDX CLI and Scanner
+      - name: Install Salesforce CLI and Code Analyzer
         run: |
-          npm install sfdx-cli -g
-          sfdx plugins:install @salesforce/sfdx-scanner
+          npm install @salesforce/cli -g
+          sf plugins install code-analyzer
 
-      - name: Run SFDX Scanner - Report findings as comments
+      - name: Run Salesforce Code Analyzer - Report findings as comments
         uses: mitchspano/sfdx-scan-pull-request@v[LATEST_VERSION_HERE]
         with:
           pmdconfig: masterRuleset.xml
@@ -137,16 +137,18 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Note the global installation of the SFDX cli - alternatively, you can use:
+Note the global installation of the Salesforce CLI - alternatively, you can use:
 
 ```
-- name: Install SFDX CLI and Scanner
+- name: Install Salesforce CLI and Code Analyzer
   run: |
-    npm install sfdx-cli
-    npx sfdx plugins:install @salesforce/sfdx-scanner
+    npm install @salesforce/cli
+    npx sf plugins install code-analyzer
 ```
 
 for that step.
+
+**Important:** Code Analyzer v5 requires Java 11 or later for the PMD engine. Ensure your workflow has Java 11+ installed.
 
 ### Included Dependencies
 

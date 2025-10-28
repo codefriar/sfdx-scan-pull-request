@@ -57,7 +57,7 @@ describe("SfCLI", () => {
   });
 
   describe("cli", () => {
-    it("should execute a sfdx command on the command line", async () => {
+    it("should execute a sf command on the command line", async () => {
       const mockResult: ScannerViolation = {
         category: "Code Style",
         column: "1",
@@ -75,23 +75,23 @@ describe("SfCLI", () => {
       );
 
       // @ts-ignore
-      const result = await sfCLI.cli("scanner run");
+      const result = await sfCLI.cli("code-analyzer run");
 
       expect(result).toEqual(mockResult);
     });
 
-    it("should handle errors when executing a sfdx command", async () => {
+    it("should handle errors when executing a sf command", async () => {
       const error = new Error("Test error");
       (execSync as jest.Mock).mockImplementation(() => {
         throw error;
       });
 
-      await expect(sfCLI.cli("scanner run")).rejects.toThrow(error);
+      await expect(sfCLI.cli("code-analyzer run")).rejects.toThrow(error);
     });
   });
 
   describe("registerRule", () => {
-    it("should register a new rule with the scanner", async () => {
+    it("should register a new rule with the code-analyzer", async () => {
       const mockResult = {
         // populate with mock data
       };

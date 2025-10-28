@@ -56,7 +56,7 @@ export default class SfScannerPullRequest {
       severityThreshold: this.validateThresholdInput(),
       strictlyEnforcedRules: getInput("strictly-enforced-rules"),
       deleteResolvedComments: getInput("delete-resolved-comments") === "true",
-      target: context?.payload?.pull_request ? "" : getInput("target"),
+      target: getInput("target"),
       runFlowScanner: getInput("run-flow-scanner") === "true",
       debug: getInput("debug") === "true",
       exportSarif: getInput("export-sarif") === "true",

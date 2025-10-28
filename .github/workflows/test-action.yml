@@ -11,10 +11,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
 
-      - name: Install SFDX CLI and Scanner
+      - name: Install Salesforce CLI and Code Analyzer
         run: |
-          npm install sfdx-cli -g
-          sfdx plugins:install @salesforce/sfdx-scanner
+          npm install @salesforce/cli -g
+          sf plugins install code-analyzer
 
       - name: Run Unit Tests
         run: |

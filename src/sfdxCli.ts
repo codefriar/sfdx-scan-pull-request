@@ -115,7 +115,7 @@ export default class SfCLI {
   }
 
   /**
-   * @description uses the sf scanner to generate a .sarif file containing the scan results.
+   * @description uses the sf code-analyzer to generate a .sarif file containing the scan results.
    * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
    * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
    */
@@ -131,20 +131,20 @@ export default class SfCLI {
       )
       .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
     try {
-      console.log("Executing Sf scanner on the command line");
-      return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
+      console.log("Executing Sf code-analyzer on the command line");
+      return await this.cli("code-analyzer run", [...scannerCliArgs, "--json"]);
     } catch (err) {
       throw err;
     }
   }
 
   /**
-   * @description Registers a new rule with the scanner
+   * @description Registers a new rule with the code-analyzer
    * @param path The path to the rule's .jar file
    * @param language the language the rule is written for ie: apex, html, etc.
    */
   async registerRule(path: string, language: string) {
-    return this.cli<ScannerFinding[] | string>("scanner rule add", [
+    return this.cli<ScannerFinding[] | string>("code-analyzer rule add", [
       `--path="${path}"`,
       `--language="${language}"`,
       "--json",
