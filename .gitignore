@@ -4,3 +4,12 @@ coverage
 .sfdx
 .sf
 *-diagnosis.json
+
+# Added by Illuminated Cloud
+.localdev/
+/IlluminatedCloud/
+/out/
+target/
+/.illuminatedCloud/
+**/tsconfig*.json
+**/*.tsbuildinfo

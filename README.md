@@ -1,119 +1,114 @@
 # sfdx-scan-pull-request
 
-Runs Salesforce Code Analyzer (v5) on a pull request or individual commit and generates in-line comments with the findings.
+Runs Salesforce Code Analyzer (v5) on a pull request and generates in-line comments or check-run annotations with the findings.
 
 ![Example](images/sfdx-scan-pull-request.png)
 
+## Breaking Changes in v2.0
+
+**Version 2.0 introduces breaking changes** to align with Salesforce Code Analyzer v5's config-based approach:
+
+- **REQUIRED**: You must now provide a Code Analyzer configuration YAML file via the `code-analyzer-config` input
+- **DEPRECATED**: The following inputs have been removed:
+  - `engine` - Configure engines in your Code Analyzer config file
+  - `pmdconfig` - Configure PMD rules in your Code Analyzer config file
+  - `eslintconfig` - Configure ESLint in your Code Analyzer config file
+  - `eslint-env` - Configure ESLint environment in your Code Analyzer config file
+  - `tsconfig` - Configure TypeScript in your Code Analyzer config file
+  - `category` - Configure rule categories in your Code Analyzer config file
+  - `custom-pmd-rules` - Register custom rules in your Code Analyzer config file
+  - `run-flow-scanner` - Flow scanner runs by default in Code Analyzer v5
+  - `target` - The action now scans all files and filters results to changed lines only
+
 ## Inputs
 
-| NOTE: All inputs are optional |
-| ----------------------------- |
+### `code-analyzer-config` (REQUIRED)
 
-## `category`
+Path to the Salesforce Code Analyzer configuration YAML file. This file defines which engines to run, which rules to apply, and what files to scan.
 
-Categor(ies) of rules to run.
+Example config file (`code-analyzer.yml`):
 
-## `engine`
+```yaml
+engines:
+  - name: pmd
+    rules:
+      - category: Best Practices
+      - category: Security
+  - name: eslint-lwc
+  - name: retire-js
 
-Engine(s) to run. This takes the form of a comma delimited string, and is passed directly to the sf scanner command line. ie:
-
-```
-'pmd,eslint,eslint-lwc'
-```
-
-## `eslint-env`
-
-JSON-formatted string, overrides ESLint's default environment variables.
-
-## `eslintconfig`
-
-Location of eslintrc config to customize eslint engine.
-
-## `pmdconfig`
-
-Location of PMD rule reference XML file to customize rule selection.
-
-### Multiple PMD Rulesets
-
-To use multiple rulesets within the scan, make a top level file such as `masterRuleset.xml` and include the paths to the other ruleset files:
-
-```
-.
-├── masterRuleset.xml
-├── ruleset1.xml
-└── ruleset2.xml
+targets:
+  - "force-app/main/default/**/*.cls"
+  - "force-app/main/default/**/*.trigger"
+  - "force-app/main/default/**/*.js"
 ```
 
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<ruleset name="master"
-    xmlns="http://pmd.sourceforge.net/ruleset/2.0.0"
-    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-    xsi:schemaLocation="http://pmd.sourceforge.net/ruleset/2.0.0 https://pmd.sourceforge.io/ruleset_2_0_0.xsd">
-    <description>Master Ruleset</description>
-    <rule ref="ruleset1.xml" />
-    <rule ref="ruleset2.xml" />
-</ruleset>
-```
+For complete configuration options, see the [Salesforce Code Analyzer documentation](https://forcedotcom.github.io/sfdx-scanner/).
 
-```yml
-pmdconfig: masterRuleset.xml
-```
+### `sarif-output-file`
 
-## `custom-pmd-rules`
+Path where the SARIF output file will be generated. Defaults to `sfca-results.sarif`.
 
-A JSON string which defines any custom rules which need to be registered before the scan is ran. Custom rules are identified by the path to their XML/JAR file and their language.
+### `severity-threshold`
 
-ex:
+Integer threshold value which will throw an error when violations of specific severity (or more severe) are detected.
 
-```json
-[
-  { "path": "customRules/customApex.jar", "language": "apex" },
-  { "path": "customRules/customXml.xml", "language": "xml" }
-]
-```
-
-## `severity-threshold`
-
-Throws an error when violations of specific severity (or more severe) are detected.
-
-## `strictly-enforced-rules`
+### `strictly-enforced-rules`
 
 A JSON string which defines the rules which will be strictly enforced regardless of their priority. Enforced rules are identified by their engine, category, and rule name.
 
-ex:
+Example:
 
 ```json
 [{ "engine": "pmd", "category": "Performance", "rule": "AvoidDebugStatements" }]
 ```
 
-## `target`
-
-Optionally provide this to scan a whole directory instead of just the diff. If the action is run on a push, `target` will be respected; because GitHub does not allow the uploading of comments during a PR run for a file that hasn't been changed on the latest commit for that PR, this option is ignored when running for a pull request (in favor of just scanning the diff, as it would if this option wasn't supplied).
-
-## `tsconfig`
-
-Location of tsconfig.json file.
-
-## `report-mode`
+### `report-mode`
 
 Details which way to report issues back to GitHub, can be either:
 
 - `check-runs` - Shows findings as annotations on the PR (default)
 - `comments` - Shows findings as comments
 
-## `delete-resolved-comments`
+### `delete-resolved-comments`
 
 When set to true, will delete resolved comments from a PR. Defaults to `false`. Will do nothing unless `report-mode` is set to `comments`.
 
-## Example usage
+### `max-number-of-comments`
 
-```
+Maximum number of comments to post before switching to an artifact. Defaults to `100`.
+
+### `rate-limit-wait-time`
+
+Time to wait (in milliseconds) before retrying after hitting the rate limit. Defaults to `60000` (1 minute).
+
+### `rate-limit-retry-count`
+
+Number of times to retry after hitting the rate limit. Defaults to `5`.
+
+### `comment-batch-size`
+
+Number of comments to post in a single batch. Defaults to `15`.
+
+### `debug`
+
+Set `true` to enable debug mode. Defaults to `false`.
+
+### `export-sarif`
+
+Set `true` to export the scan results in SARIF format to GitHub Code Scanning. Defaults to `false`.
+
+## Example Usage
+
+### Basic Example
+
+```yaml
 name: Static Analysis
 on:
   pull_request:
     types: [opened, reopened, synchronize]
   workflow_dispatch:
+
 jobs:
   analyze:
     runs-on: ubuntu-latest
@@ -122,55 +117,143 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Setup Java 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
       - name: Install Salesforce CLI and Code Analyzer
         run: |
           npm install @salesforce/cli -g
           sf plugins install code-analyzer
 
-      - name: Run Salesforce Code Analyzer - Report findings as comments
-        uses: mitchspano/sfdx-scan-pull-request@v[LATEST_VERSION_HERE]
+      - name: Run Salesforce Code Analyzer
+        uses: mitchspano/sfdx-scan-pull-request@v2
         with:
-          pmdconfig: masterRuleset.xml
-          severity-threshold: 4
-          strictly-enforced-rules: '[{ "engine": "pmd", "category": "Performance", "rule": "AvoidDebugStatements" }]'
+          code-analyzer-config: '.github/code-analyzer.yml'
+          severity-threshold: 3
+          report-mode: 'check-runs'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
 
-Note the global installation of the Salesforce CLI - alternatively, you can use:
+### Advanced Example with SARIF Export
 
+```yaml
+name: Static Analysis
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  analyze:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+      security-events: write
+    steps:
+      - uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
+
+      - name: Install Salesforce CLI and Code Analyzer
+        run: |
+          npm install @salesforce/cli -g
+          sf plugins install code-analyzer
+
+      - name: Run Salesforce Code Analyzer
+        uses: mitchspano/sfdx-scan-pull-request@v2
+        with:
+          code-analyzer-config: '.github/code-analyzer.yml'
+          sarif-output-file: 'scan-results.sarif'
+          severity-threshold: 2
+          strictly-enforced-rules: '[{ "engine": "pmd", "category": "Security", "rule": "ApexCRUDViolation" }]'
+          report-mode: 'comments'
+          delete-resolved-comments: 'true'
+          export-sarif: 'true'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 ```
-- name: Install Salesforce CLI and Code Analyzer
-  run: |
-    npm install @salesforce/cli
-    npx sf plugins install code-analyzer
+
+**Important Notes:**
+- Code Analyzer v5 requires Java 11 or later for the PMD engine
+- The action scans all files defined in your config, then filters results to only show violations in changed lines
+- Flow scanner runs automatically in Code Analyzer v5 (no need to enable it separately)
+
+## Sample Code Analyzer Configuration
+
+Here's a comprehensive example of a Code Analyzer configuration file:
+
+```yaml
+# .github/code-analyzer.yml
+engines:
+  - name: pmd
+    rules:
+      - category: Best Practices
+      - category: Code Style
+      - category: Design
+      - category: Documentation
+      - category: Error Prone
+      - category: Performance
+      - category: Security
+
+  - name: eslint-lwc
+
+  - name: eslint
+    config: .eslintrc.json
+
+  - name: retire-js
+
+  - name: cpd
+
+targets:
+  - "force-app/main/default/**/*.cls"
+  - "force-app/main/default/**/*.trigger"
+  - "force-app/main/default/**/*.js"
+  - "force-app/main/default/**/*.html"
+  - "force-app/main/default/**/*.xml"
+
+exclude:
+  - "**/node_modules/**"
+  - "**/__tests__/**"
 ```
 
-for that step.
+For more configuration options, refer to the [Salesforce Code Analyzer documentation](https://forcedotcom.github.io/sfdx-scanner/).
 
-**Important:** Code Analyzer v5 requires Java 11 or later for the PMD engine. Ensure your workflow has Java 11+ installed.
+## Migration Guide from v1.x
 
-### Included Dependencies
+If you're upgrading from v1.x, follow these steps:
 
-This package includes the following version of the required dependencies:
+1. **Create a Code Analyzer config file** (e.g., `.github/code-analyzer.yml`)
+2. **Migrate your engine settings**:
+   - Old: `engine: 'pmd,eslint,eslint-lwc'`
+   - New: Define engines in your config file (see example above)
+3. **Migrate PMD rules**:
+   - Old: `pmdconfig: 'pmd-ruleset.xml'`
+   - New: Reference your PMD ruleset in the config file or define rules inline
+4. **Migrate ESLint config**:
+   - Old: `eslintconfig: '.eslintrc.json'`
+   - New: Reference in config file: `config: .eslintrc.json` under the eslint engine
+5. **Update your workflow**:
+   - Replace old inputs with `code-analyzer-config: '.github/code-analyzer.yml'`
+   - Remove deprecated inputs (`engine`, `pmdconfig`, `eslintconfig`, `target`, etc.)
 
-| npm package     | included version |
-| --------------- | ---------------- |
-| @actions/core   | 1.9.0            |
-| @actions/github | 5.0.3            |
-| @octokit/action | 4.0.4            |
-| parse-diff      | 0.9.0            |
-
- <!-- @salesforce/sfdx-scanner (sfdx-cli plugin) 2.13.7            -->
-
-### Making Modifications
+## Making Modifications
 
 To make modifications to this project, be sure to run the following command before raising a pull request:
 
-```
+```bash
 npm run build
 ```
 
 This will use [ncc](https://github.com/vercel/ncc) to bundle the contents of the project and `node_modules` into the `dist` folder.
 
-For more information regarding the inclusion of these static versioned dependencies and the necessity of the `build` command, check out this [documentation](https://docs.github.com/en/actions/creating-actions/creating-a-javascript-action#commit-tag-and-push-your-action-to-github)
+For more information regarding the inclusion of these static versioned dependencies and the necessity of the `build` command, check out this [documentation](https://docs.github.com/en/actions/creating-actions/creating-a-javascript-action#commit-tag-and-push-your-action-to-github).

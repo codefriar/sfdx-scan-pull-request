@@ -5,15 +5,7 @@ export type ScannerFinding = {
 };
 
 export type ScannerFlags = {
-  category?: string;
-  engine?: string;
-  env?: string;
-  eslintconfig?: string;
-  pmdconfig?: string;
-  target: string;
-  tsConfig?: string;
-  exportSarif?: boolean;
-  format: string;
+  configFile: string;
   outfile: string;
 };
 

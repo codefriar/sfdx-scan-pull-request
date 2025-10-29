@@ -38,15 +38,22 @@ export default class SfCLI {
   }
 
   /**
-   * @description Scans the files in the target directory and returns the findings. This is the method where
-   * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
+   * @description Scans the files using the Code Analyzer config file and returns the findings.
+   * This method runs the scanner to generate a SARIF file, then parses it and returns
    * the findings in a format that can be easily consumed by the reporter.
    */
   async getFindingsForFiles() {
-    await this.generateSarifOutputFile();
+    await this.runCodeAnalyzer();
     if (!fileExists(this.scannerFlags.outfile)) {
       throw new Error("SARIF output file not found");
     }
+    return this.parseSarifFile();
+  }
+
+  /**
+   * @description Parses the SARIF file and converts it to ScannerFinding objects
+   */
+  private parseSarifFile(): ScannerFinding[] {
     const sarifContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
     const sarifJson: SarifDocument = JSON.parse(sarifContent) as SarifDocument;
 
@@ -96,58 +103,22 @@ export default class SfCLI {
   }
 
   /**
-   * @description Executes a sfdx command on the command line
-   * @param commandName this is the 'topic' (namespace) and 'command' (action) to execute. ie: 'scanner run'
-   * @param cliArgs an array of strings to pass as arguments to the command
+   * @description Runs the sf code-analyzer using the config file approach
+   * This generates a SARIF file at the specified output location
    */
-  private async cli<T>(commandName: string, cliArgs: string[] = []) {
-    let result = null as T;
+  private async runCodeAnalyzer() {
     try {
-      const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-      const jsonPayload = execSync(cliCommand, {
+      console.log("Executing sf code-analyzer with config file...");
+      const cliCommand = `sf code-analyzer run -c "${this.scannerFlags.configFile}" -f "${this.scannerFlags.outfile}"`;
+      console.log(`Running command: ${cliCommand}`);
+      execSync(cliCommand, {
         maxBuffer: 10485760,
-      }).toString();
-      result = (JSON.parse(jsonPayload) as SfdxCommandResult<T>).result;
+        stdio: 'inherit'
+      });
+      console.log("Code analyzer execution completed successfully");
     } catch (err) {
+      console.error("Error running code analyzer:", err);
       throw err;
     }
-    return result;
-  }
-
-  /**
-   * @description uses the sf code-analyzer to generate a .sarif file containing the scan results.
-   * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
-   * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
-   */
-  private async generateSarifOutputFile() {
-    this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
-    const scannerCliArgs = (
-      Object.keys(this.scannerFlags) as Array<keyof ScannerFlags>
-    )
-      .map<string[]>((key) =>
-        this.scannerFlags[key]
-          ? ([`--${key}`, this.scannerFlags[key]] as string[])
-          : []
-      )
-      .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-    try {
-      console.log("Executing Sf code-analyzer on the command line");
-      return await this.cli("code-analyzer run", [...scannerCliArgs, "--json"]);
-    } catch (err) {
-      throw err;
-    }
-  }
-
-  /**
-   * @description Registers a new rule with the code-analyzer
-   * @param path The path to the rule's .jar file
-   * @param language the language the rule is written for ie: apex, html, etc.
-   */
-  async registerRule(path: string, language: string) {
-    return this.cli<ScannerFinding[] | string>("code-analyzer rule add", [
-      `--path="${path}"`,
-      `--language="${language}"`,
-      "--json",
-    ]);
   }
 }

@@ -64261,15 +64261,21 @@ class SfCLI {
         this.scannerFlags = scannerFlags;
     }
     /**
-     * @description Scans the files in the target directory and returns the findings. This is the method where
-     * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
+     * @description Scans the files using the Code Analyzer config file and returns the findings.
+     * This method runs the scanner to generate a SARIF file, then parses it and returns
      * the findings in a format that can be easily consumed by the reporter.
      */
     async getFindingsForFiles() {
-        await this.generateSarifOutputFile();
+        await this.runCodeAnalyzer();
         if (!fileExists(this.scannerFlags.outfile)) {
             throw new Error("SARIF output file not found");
         }
+        return this.parseSarifFile();
+    }
+    /**
+     * @description Parses the SARIF file and converts it to ScannerFinding objects
+     */
+    parseSarifFile() {
         const sarifContent = external_fs_.readFileSync(this.scannerFlags.outfile, "utf-8");
         const sarifJson = JSON.parse(sarifContent);
         const findings = [];
@@ -64311,55 +64317,24 @@ class SfCLI {
         return findings;
     }
     /**
-     * @description Executes a sfdx command on the command line
-     * @param commandName this is the 'topic' (namespace) and 'command' (action) to execute. ie: 'scanner run'
-     * @param cliArgs an array of strings to pass as arguments to the command
+     * @description Runs the sf code-analyzer using the config file approach
+     * This generates a SARIF file at the specified output location
      */
-    async cli(commandName, cliArgs = []) {
-        let result = null;
+    async runCodeAnalyzer() {
         try {
-            const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-            const jsonPayload = (0,external_child_process_namespaceObject.execSync)(cliCommand, {
+            console.log("Executing sf code-analyzer with config file...");
+            const cliCommand = `sf code-analyzer run -c "${this.scannerFlags.configFile}" -f "${this.scannerFlags.outfile}"`;
+            console.log(`Running command: ${cliCommand}`);
+            (0,external_child_process_namespaceObject.execSync)(cliCommand, {
                 maxBuffer: 10485760,
-            }).toString();
-            result = JSON.parse(jsonPayload).result;
+                stdio: 'inherit'
+            });
+            console.log("Code analyzer execution completed successfully");
         }
         catch (err) {
+            console.error("Error running code analyzer:", err);
             throw err;
         }
-        return result;
-    }
-    /**
-     * @description uses the sf code-analyzer to generate a .sarif file containing the scan results.
-     * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
-     * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
-     */
-    async generateSarifOutputFile() {
-        this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
-        const scannerCliArgs = Object.keys(this.scannerFlags)
-            .map((key) => this.scannerFlags[key]
-            ? [`--${key}`, this.scannerFlags[key]]
-            : [])
-            .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-        try {
-            console.log("Executing Sf code-analyzer on the command line");
-            return await this.cli("code-analyzer run", [...scannerCliArgs, "--json"]);
-        }
-        catch (err) {
-            throw err;
-        }
-    }
-    /**
-     * @description Registers a new rule with the code-analyzer
-     * @param path The path to the rule's .jar file
-     * @param language the language the rule is written for ie: apex, html, etc.
-     */
-    async registerRule(path, language) {
-        return this.cli("code-analyzer rule add", [
-            `--path="${path}"`,
-            `--language="${language}"`,
-            "--json",
-        ]);
     }
 }
 //# sourceMappingURL=sfdxCli.js.map
@@ -68726,15 +68701,14 @@ class SfScannerPullRequest {
      * @description Constructor for the sfdx scanner pull request action
      */
     constructor() {
+        const configFile = (0,core.getInput)("code-analyzer-config");
+        if (!configFile) {
+            (0,core.setFailed)("code-analyzer-config input is required");
+            throw new Error("code-analyzer-config input is required");
+        }
         this.scannerFlags = {
-            category: (0,core.getInput)("category"),
-            engine: (0,core.getInput)("engine"),
-            env: (0,core.getInput)("eslint-env"),
-            eslintconfig: (0,core.getInput)("eslintconfig"),
-            pmdconfig: (0,core.getInput)("pmdconfig"),
-            tsConfig: (0,core.getInput)("tsconfig"),
-            format: "sarif", // This isn't configurable, because we use the sarif output to process the findings
-            outfile: "sfdx-scan.sarif", // This could be configurable, but isn't currently
+            configFile: configFile,
+            outfile: (0,core.getInput)("sarif-output-file") || "sfca-results.sarif",
         };
         /**
          * @description The inputs to the action. These are configurable by the user, and control the behavior of
@@ -68743,7 +68717,6 @@ class SfScannerPullRequest {
          */
         this.inputs = {
             reportMode: (0,core.getInput)("report-mode") || "check-runs",
-            customPmdRules: (0,core.getInput)("custom-pmd-rules"),
             maxNumberOfComments: parseInt((0,core.getInput)("max-number-of-comments")) || 100, // default of 100 comments
             rateLimitWaitTime: parseInt((0,core.getInput)("rate-limit-wait-time")) || 60000, // default of 1 minute
             rateLimitRetries: parseInt((0,core.getInput)("rate-limit-retries")) || 5, // default of 5 retries
@@ -68751,13 +68724,11 @@ class SfScannerPullRequest {
             severityThreshold: this.validateThresholdInput(),
             strictlyEnforcedRules: (0,core.getInput)("strictly-enforced-rules"),
             deleteResolvedComments: (0,core.getInput)("delete-resolved-comments") === "true",
-            target: (0,core.getInput)("target"),
-            runFlowScanner: (0,core.getInput)("run-flow-scanner") === "true",
             debug: (0,core.getInput)("debug") === "true",
             exportSarif: (0,core.getInput)("export-sarif") === "true",
         };
         this.pullRequest = github.context?.payload?.pull_request;
-        this.validateContext(this.pullRequest, this.inputs.target);
+        this.validateContext(this.pullRequest);
         const reporterParams = {
             inputs: this.inputs,
             context: github.context,
@@ -68784,21 +68755,20 @@ class SfScannerPullRequest {
         return normalizedThreshold;
     }
     /**
-     * @desscription validates that the execution context is a pull request, and that we have a valid target reference
+     * @description validates that the execution context is a pull request
      * @param pullRequest
-     * @param target
      */
-    validateContext(pullRequest, target) {
+    validateContext(pullRequest) {
         console.log("Validating that this action was invoked from an acceptable context...");
-        if (!pullRequest && !target) {
-            (0,core.setFailed)("This action is only applicable when invoked by a pull request, or with the target property supplied.");
+        if (!pullRequest) {
+            (0,core.setFailed)("This action is only applicable when invoked by a pull request.");
         }
     }
     /**
-     * @description Performs the static code analysis on the files in the temporary directory
+     * @description Performs the static code analysis using the Code Analyzer config file
      */
-    async performStaticCodeAnalysisOnFilesInDiff() {
-        console.log("Performing static code analysis on all of the relevant files...");
+    async performStaticCodeAnalysis() {
+        console.log("Performing static code analysis using Code Analyzer config file...");
         try {
             return await this.sfCli.getFindingsForFiles();
         }
@@ -68815,21 +68785,20 @@ class SfScannerPullRequest {
         return [];
     }
     /**
-     * @description Parses the findings from the sfdx scanner execution
+     * @description Parses the findings from the scanner execution
      * and determines if any of the findings are for lines which have changed.
      * If a finding exists and covers a changed line, then translate that finding
      * object into a comment object.
      */
     filterFindingsToDiffScope(findings, filePathToChangedLines) {
-        console.log("Filtering the findings to just the lines which are part of the context...");
+        console.log("Filtering the findings to just the lines which are part of the changed files...");
         for (let finding of findings) {
             const filePath = finding.fileName
                 .replace(process.cwd() + "/", "")
                 .replace("file:", "");
             const relevantLines = filePathToChangedLines.get(filePath) || new Set();
             for (let violation of finding.violations) {
-                if (!this.isInChangedLines(violation, relevantLines) &&
-                    !this.inputs.target) {
+                if (!this.isInChangedLines(violation, relevantLines)) {
                     continue;
                 }
                 this.reporter.translateViolationToReport(filePath, violation, finding.engine);
@@ -68853,63 +68822,20 @@ class SfScannerPullRequest {
         return true;
     }
     /**
-     * @description Constructs an array containing the file paths of the files to pass to the scanner
-     * @param filePathToChangedLines Map of file paths to the lines which have changed
-     * @param target The target file path to scan
-     * @returns file paths to scan
-     */
-    getFilesToScan(filePathToChangedLines, target) {
-        if (target) {
-            return [target];
-        }
-        let pathsWithChangedLines = [];
-        for (let [filePath, changedLines] of filePathToChangedLines) {
-            if (changedLines.size > 0) {
-                pathsWithChangedLines.push(filePath);
-            }
-        }
-        return pathsWithChangedLines;
-    }
-    /**
-     * @description Adds custom rules to the scanner's execution
-     * @param rules JSON string containing the custom rules to add
-     */
-    async registerCustomScannerRules(rules) {
-        for (let rule of JSON.parse(rules)) {
-            try {
-                await this.sfCli.registerRule(rule.path, rule.language);
-            }
-            catch (err) {
-                const typedErr = err;
-                console.error({
-                    message: typedErr.message,
-                    status: typedErr.status,
-                    stack: typedErr.stack,
-                    output: typedErr.output?.toString(),
-                });
-                (0,core.setFailed)("Something went wrong when registering custom rule.");
-            }
-        }
-    }
-    /**
      * @description The main workflow for the sfdx scanner pull request action
      */
     async workflow() {
         console.log("Beginning sf-scanner-pull-request run...");
-        let filePathToChangedLines = this.inputs.target
-            ? new Map()
-            : await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
-        let filesToScan = this.getFilesToScan(filePathToChangedLines, this.inputs.target);
-        if (filesToScan.length === 0) {
-            console.log("There are no files to scan - exiting now.");
+        // Get the diff to determine which lines changed in which files
+        let filePathToChangedLines = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
+        if (filePathToChangedLines.size === 0) {
+            console.log("There are no changed files - exiting now.");
             return;
         }
-        this.scannerFlags.target = filesToScan.join(",");
-        if (this.inputs.customPmdRules) {
-            await this.registerCustomScannerRules(this.inputs.customPmdRules);
-        }
-        let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
-        this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
+        // Run the scanner on all files (config file determines what to scan)
+        let allFindings = await this.performStaticCodeAnalysis();
+        // Filter findings to only show violations in changed lines
+        this.filterFindingsToDiffScope(allFindings, filePathToChangedLines);
         try {
             this.reporter.write();
         }

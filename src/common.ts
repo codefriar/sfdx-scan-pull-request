@@ -4,15 +4,12 @@ import { ScannerViolation, ScannerViolationType } from "./sfdxCli.types.js";
 export type PluginInputs = {
   severityThreshold: number;
   strictlyEnforcedRules: string;
-  customPmdRules?: string;
   maxNumberOfComments: number;
   commentBatchSize: number;
   rateLimitWaitTime: number;
   rateLimitRetries: number;
   deleteResolvedComments: boolean;
   reportMode: string | "comments" | "check-runs";
-  target: string;
-  runFlowScanner: boolean;
   debug: boolean;
   exportSarif: boolean;
 };

@@ -30,16 +30,16 @@ export default class SfScannerPullRequest {
    * @description Constructor for the sfdx scanner pull request action
    */
   constructor() {
+    const configFile = getInput("code-analyzer-config");
+    if (!configFile) {
+      setFailed("code-analyzer-config input is required");
+      throw new Error("code-analyzer-config input is required");
+    }
+
     this.scannerFlags = {
-      category: getInput("category"),
-      engine: getInput("engine"),
-      env: getInput("eslint-env"),
-      eslintconfig: getInput("eslintconfig"),
-      pmdconfig: getInput("pmdconfig"),
-      tsConfig: getInput("tsconfig"),
-      format: "sarif", // This isn't configurable, because we use the sarif output to process the findings
-      outfile: "sfdx-scan.sarif", // This could be configurable, but isn't currently
-    } as ScannerFlags;
+      configFile: configFile,
+      outfile: getInput("sarif-output-file") || "sfca-results.sarif",
+    };
 
     /**
      * @description The inputs to the action. These are configurable by the user, and control the behavior of
@@ -48,7 +48,6 @@ export default class SfScannerPullRequest {
      */
     this.inputs = {
       reportMode: getInput("report-mode") || "check-runs",
-      customPmdRules: getInput("custom-pmd-rules"),
       maxNumberOfComments: parseInt(getInput("max-number-of-comments")) || 100, // default of 100 comments
       rateLimitWaitTime: parseInt(getInput("rate-limit-wait-time")) || 60000, // default of 1 minute
       rateLimitRetries: parseInt(getInput("rate-limit-retries")) || 5, // default of 5 retries
@@ -56,14 +55,12 @@ export default class SfScannerPullRequest {
       severityThreshold: this.validateThresholdInput(),
       strictlyEnforcedRules: getInput("strictly-enforced-rules"),
       deleteResolvedComments: getInput("delete-resolved-comments") === "true",
-      target: getInput("target"),
-      runFlowScanner: getInput("run-flow-scanner") === "true",
       debug: getInput("debug") === "true",
       exportSarif: getInput("export-sarif") === "true",
     };
 
     this.pullRequest = context?.payload?.pull_request;
-    this.validateContext(this.pullRequest, this.inputs.target);
+    this.validateContext(this.pullRequest);
 
     const reporterParams: ReporterProps = {
       inputs: this.inputs,
@@ -98,27 +95,26 @@ export default class SfScannerPullRequest {
   }
 
   /**
-   * @desscription validates that the execution context is a pull request, and that we have a valid target reference
+   * @description validates that the execution context is a pull request
    * @param pullRequest
-   * @param target
    */
-  private validateContext(pullRequest: GithubPullRequest, target: string) {
+  private validateContext(pullRequest: GithubPullRequest) {
     console.log(
       "Validating that this action was invoked from an acceptable context..."
     );
-    if (!pullRequest && !target) {
+    if (!pullRequest) {
       setFailed(
-        "This action is only applicable when invoked by a pull request, or with the target property supplied."
+        "This action is only applicable when invoked by a pull request."
       );
     }
   }
 
   /**
-   * @description Performs the static code analysis on the files in the temporary directory
+   * @description Performs the static code analysis using the Code Analyzer config file
    */
-  private async performStaticCodeAnalysisOnFilesInDiff() {
+  private async performStaticCodeAnalysis() {
     console.log(
-      "Performing static code analysis on all of the relevant files..."
+      "Performing static code analysis using Code Analyzer config file..."
     );
     try {
       return await this.sfCli.getFindingsForFiles();
@@ -136,7 +132,7 @@ export default class SfScannerPullRequest {
   }
 
   /**
-   * @description Parses the findings from the sfdx scanner execution
+   * @description Parses the findings from the scanner execution
    * and determines if any of the findings are for lines which have changed.
    * If a finding exists and covers a changed line, then translate that finding
    * object into a comment object.
@@ -146,7 +142,7 @@ export default class SfScannerPullRequest {
     filePathToChangedLines: Map<string, Set<number>>
   ) {
     console.log(
-      "Filtering the findings to just the lines which are part of the context..."
+      "Filtering the findings to just the lines which are part of the changed files..."
     );
 
     for (let finding of findings) {
@@ -156,10 +152,7 @@ export default class SfScannerPullRequest {
       const relevantLines =
         filePathToChangedLines.get(filePath) || new Set<number>();
       for (let violation of finding.violations) {
-        if (
-          !this.isInChangedLines(violation, relevantLines) &&
-          !this.inputs.target
-        ) {
+        if (!this.isInChangedLines(violation, relevantLines)) {
           continue;
         }
         this.reporter.translateViolationToReport(
@@ -195,78 +188,32 @@ export default class SfScannerPullRequest {
     return true;
   }
 
-  /**
-   * @description Constructs an array containing the file paths of the files to pass to the scanner
-   * @param filePathToChangedLines Map of file paths to the lines which have changed
-   * @param target The target file path to scan
-   * @returns file paths to scan
-   */
-  private getFilesToScan(
-    filePathToChangedLines: Map<string, Set<number>>,
-    target: String
-  ) {
-    if (target) {
-      return [target];
-    }
-    let pathsWithChangedLines = [];
-    for (let [filePath, changedLines] of filePathToChangedLines) {
-      if (changedLines.size > 0) {
-        pathsWithChangedLines.push(filePath);
-      }
-    }
-    return pathsWithChangedLines;
-  }
 
-  /**
-   * @description Adds custom rules to the scanner's execution
-   * @param rules JSON string containing the custom rules to add
-   */
-  private async registerCustomScannerRules(rules: string) {
-    for (let rule of JSON.parse(rules) as {
-      [key in string]: string;
-    }[]) {
-      try {
-        await this.sfCli.registerRule(rule.path, rule.language);
-      } catch (err) {
-        const typedErr = err as unknown as ExecSyncError;
-        console.error({
-          message: typedErr.message,
-          status: typedErr.status,
-          stack: typedErr.stack,
-          output: typedErr.output?.toString(),
-        });
-        setFailed("Something went wrong when registering custom rule.");
-      }
-    }
-  }
 
   /**
    * @description The main workflow for the sfdx scanner pull request action
    */
   async workflow() {
     console.log("Beginning sf-scanner-pull-request run...");
-    let filePathToChangedLines = this.inputs.target
-      ? new Map<string, Set<number>>()
-      : await getDiffInPullRequest(
-          this.pullRequest?.base?.ref,
-          this.pullRequest?.head?.ref,
-          this.pullRequest?.base?.repo?.clone_url
-        );
-    let filesToScan = this.getFilesToScan(
-      filePathToChangedLines,
-      this.inputs.target
+
+    // Get the diff to determine which lines changed in which files
+    let filePathToChangedLines = await getDiffInPullRequest(
+      this.pullRequest?.base?.ref,
+      this.pullRequest?.head?.ref,
+      this.pullRequest?.base?.repo?.clone_url
     );
-    if (filesToScan.length === 0) {
-      console.log("There are no files to scan - exiting now.");
+
+    if (filePathToChangedLines.size === 0) {
+      console.log("There are no changed files - exiting now.");
       return;
     }
-    this.scannerFlags.target = filesToScan.join(",");
-    if (this.inputs.customPmdRules) {
-      await this.registerCustomScannerRules(this.inputs.customPmdRules);
-    }
 
-    let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
-    this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
+    // Run the scanner on all files (config file determines what to scan)
+    let allFindings = await this.performStaticCodeAnalysis();
+
+    // Filter findings to only show violations in changed lines
+    this.filterFindingsToDiffScope(allFindings, filePathToChangedLines);
+
     try {
       this.reporter.write();
     } catch (e) {

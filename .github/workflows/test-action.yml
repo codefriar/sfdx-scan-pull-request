@@ -10,6 +10,14 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java 11
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '11'
 
       - name: Install Salesforce CLI and Code Analyzer
         run: |
@@ -21,13 +29,11 @@ jobs:
           npm ci
           npm run test
 
-      - name: Apex static analysis
+      - name: Run Code Analyzer
         uses: ./
         with:
-          pmdconfig: .github/workflows/pmd-ruleset.xml
-          severity-threshold: 4
-          engine: pmd
-          target: tests
-          eslintconfig: eslint.config..js
+          code-analyzer-config: .github/code-analyzer.yml
+          severity-threshold: 3
+          report-mode: check-runs
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
