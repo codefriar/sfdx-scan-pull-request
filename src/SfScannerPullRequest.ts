@@ -36,10 +36,15 @@ export default class SfScannerPullRequest {
       throw new Error("code-analyzer-config input is required");
     }
 
+    const sarifOutputFile = getInput("sarif-output-file");
     this.scannerFlags = {
       configFile: configFile,
-      outfile: getInput("sarif-output-file") || "sfca-results.sarif",
+      outfile: sarifOutputFile || "sfca-results.sarif",
     };
+
+    console.log(`Scanner configuration:`);
+    console.log(`  - Config file: ${this.scannerFlags.configFile}`);
+    console.log(`  - SARIF output: ${this.scannerFlags.outfile}`);
 
     /**
      * @description The inputs to the action. These are configurable by the user, and control the behavior of
