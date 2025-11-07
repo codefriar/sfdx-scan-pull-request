@@ -61,7 +61,8 @@ export default class SarifUploader {
   }
 
   /**
-   * @description Filters the SARIF file to only include results that are in changed files and lines
+   * @description Filters the SARIF file to only include results that are in changed files and lines,
+   * sorts by severity (highest first), and limits to 50 results maximum.
    * @param filePathToChangedLines Map of file paths to the set of changed line numbers
    */
   private async filterSarifFile(filePathToChangedLines: Map<string, Set<number>>): Promise<void> {
@@ -76,6 +77,7 @@ export default class SarifUploader {
 
     let totalResults = 0;
     let filteredResults = 0;
+    const maxResults = 50;
 
     // Filter each run's results
     if (sarifJson.runs) {
@@ -87,8 +89,16 @@ export default class SarifUploader {
         const originalCount = run.results.length;
         totalResults += originalCount;
 
+        // Create a map of rule IDs to their severity for sorting
+        const ruleSeverityMap = new Map<string, number>();
+        if (run.tool.driver.rules) {
+          run.tool.driver.rules.forEach((rule) => {
+            ruleSeverityMap.set(rule.id, rule.properties?.severity || 0);
+          });
+        }
+
         // Filter results to only include those in changed files and lines
-        run.results = run.results.filter((result) => {
+        const filteredResultsForRun = run.results.filter((result) => {
           // Skip if no locations
           if (!result.locations || result.locations.length === 0) {
             return false;
@@ -125,12 +135,26 @@ export default class SarifUploader {
           return false;
         });
 
+        // Sort by severity (highest first)
+        filteredResultsForRun.sort((a, b) => {
+          const severityA = ruleSeverityMap.get(a.ruleId) || 0;
+          const severityB = ruleSeverityMap.get(b.ruleId) || 0;
+          return severityB - severityA; // Descending order (highest severity first)
+        });
+
+        // Limit to 50 results
+        run.results = filteredResultsForRun.slice(0, maxResults);
+
         filteredResults += run.results.length;
-        console.log(`  Engine ${run.tool.driver.name}: ${originalCount} → ${run.results.length} results`);
+        const truncated = filteredResultsForRun.length > maxResults;
+        console.log(
+          `  Engine ${run.tool.driver.name}: ${originalCount} → ${filteredResultsForRun.length} results` +
+          (truncated ? ` → ${run.results.length} (limited to ${maxResults})` : '')
+        );
       });
     }
 
-    console.log(`Total results: ${totalResults} → ${filteredResults} (filtered to changed lines only)`);
+    console.log(`Total results: ${totalResults} → ${filteredResults} (filtered, sorted by severity, limited to ${maxResults})`);
 
     // Write the filtered SARIF to a new file
     fs.writeFileSync(this.filteredSarifPath, JSON.stringify(sarifJson, null, 2));
