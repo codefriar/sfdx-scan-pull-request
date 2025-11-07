@@ -58,20 +58,20 @@ export class AnnotationsReporter extends BaseReporter<GithubAnnotation> {
       const maxAnnotations = 50;
       const totalIssues = this.issues.length;
 
-      // Sort issues by severity (highest first) and limit to 50
+      // Sort issues by severity (most severe first - severity 1 is worst, 5 is least)
       const sortedIssues = [...this.issues].sort((a, b) => {
         // Extract severity from title like "RuleName (sev: 3)"
         const getSeverity = (title: string) => {
           const match = title.match(/\(sev: (\d+)\)/);
-          return match ? parseInt(match[1]) : 0;
+          return match ? parseInt(match[1]) : 999; // Default to high number if not found
         };
-        return getSeverity(b.title) - getSeverity(a.title);
+        return getSeverity(a.title) - getSeverity(b.title); // Ascending order (1 before 5)
       });
 
       const limitedIssues = sortedIssues.slice(0, maxAnnotations);
 
       if (totalIssues > maxAnnotations) {
-        console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, highest first)`);
+        console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, most severe first - severity 1 is worst)`);
       }
 
       const request: GithubCheckRun = {

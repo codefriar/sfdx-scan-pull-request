@@ -62,7 +62,7 @@ export default class SarifUploader {
 
   /**
    * @description Filters the SARIF file to only include results that are in changed files and lines,
-   * sorts by severity (highest first), and limits to 50 results maximum ACROSS ALL ENGINES.
+   * sorts by severity (most severe first - severity 1 is worst, 5 is least), and limits to 50 results maximum ACROSS ALL ENGINES.
    * @param filePathToChangedLines Map of file paths to the set of changed line numbers
    */
   private async filterSarifFile(filePathToChangedLines: Map<string, Set<number>>): Promise<void> {
@@ -166,8 +166,9 @@ export default class SarifUploader {
       });
     }
 
-    // Sort ALL results by severity (highest first) across all engines
-    allFilteredResults.sort((a, b) => b.severity - a.severity);
+    // Sort ALL results by severity (lowest number = most severe, so ascending order)
+    // Severity 1 is most severe, 5 is least severe
+    allFilteredResults.sort((a, b) => a.severity - b.severity);
 
     // Limit to 50 results total
     const limitedResults = allFilteredResults.slice(0, maxResults);
@@ -199,7 +200,7 @@ export default class SarifUploader {
 
     console.log(`Total results: ${totalResults} → ${totalFiltered} (after filtering to changed lines)`);
     if (totalFiltered > maxResults) {
-      console.log(`Limited to top ${maxResults} highest severity violations (from ${totalFiltered} filtered results)`);
+      console.log(`Limited to top ${maxResults} most severe violations (severity 1 is most severe, from ${totalFiltered} filtered results)`);
     }
 
     // Display severity breakdown tables
@@ -223,8 +224,8 @@ export default class SarifUploader {
     console.log('│ Severity │   Count   │');
     console.log('├──────────┼───────────┤');
 
-    // Get all severity levels and sort them in descending order
-    const severities = Array.from(severityCounts.keys()).sort((a, b) => b - a);
+    // Get all severity levels and sort them in ascending order (1 is most severe, 5 is least)
+    const severities = Array.from(severityCounts.keys()).sort((a, b) => a - b);
 
     if (severities.length === 0) {
       console.log('│   N/A    │     0     │');

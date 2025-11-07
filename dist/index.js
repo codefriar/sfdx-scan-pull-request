@@ -68581,18 +68581,18 @@ class AnnotationsReporter extends BaseReporter {
         if (this.issues) {
             const maxAnnotations = 50;
             const totalIssues = this.issues.length;
-            // Sort issues by severity (highest first) and limit to 50
+            // Sort issues by severity (most severe first - severity 1 is worst, 5 is least)
             const sortedIssues = [...this.issues].sort((a, b) => {
                 // Extract severity from title like "RuleName (sev: 3)"
                 const getSeverity = (title) => {
                     const match = title.match(/\(sev: (\d+)\)/);
-                    return match ? parseInt(match[1]) : 0;
+                    return match ? parseInt(match[1]) : 999; // Default to high number if not found
                 };
-                return getSeverity(b.title) - getSeverity(a.title);
+                return getSeverity(a.title) - getSeverity(b.title); // Ascending order (1 before 5)
             });
             const limitedIssues = sortedIssues.slice(0, maxAnnotations);
             if (totalIssues > maxAnnotations) {
-                console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, highest first)`);
+                console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, most severe first - severity 1 is worst)`);
             }
             const request = {
                 name: "sfdx-scanner",
@@ -68704,7 +68704,7 @@ class SarifUploader {
     }
     /**
      * @description Filters the SARIF file to only include results that are in changed files and lines,
-     * sorts by severity (highest first), and limits to 50 results maximum ACROSS ALL ENGINES.
+     * sorts by severity (most severe first - severity 1 is worst, 5 is least), and limits to 50 results maximum ACROSS ALL ENGINES.
      * @param filePathToChangedLines Map of file paths to the set of changed line numbers
      */
     async filterSarifFile(filePathToChangedLines) {
@@ -68782,8 +68782,9 @@ class SarifUploader {
                 console.log(`  Engine ${run.tool.driver.name}: ${originalCount} → ${filteredResultsForRun.length} results`);
             });
         }
-        // Sort ALL results by severity (highest first) across all engines
-        allFilteredResults.sort((a, b) => b.severity - a.severity);
+        // Sort ALL results by severity (lowest number = most severe, so ascending order)
+        // Severity 1 is most severe, 5 is least severe
+        allFilteredResults.sort((a, b) => a.severity - b.severity);
         // Limit to 50 results total
         const limitedResults = allFilteredResults.slice(0, maxResults);
         // Count filtered severities
@@ -68809,7 +68810,7 @@ class SarifUploader {
         const totalFiltered = allFilteredResults.length;
         console.log(`Total results: ${totalResults} → ${totalFiltered} (after filtering to changed lines)`);
         if (totalFiltered > maxResults) {
-            console.log(`Limited to top ${maxResults} highest severity violations (from ${totalFiltered} filtered results)`);
+            console.log(`Limited to top ${maxResults} most severe violations (severity 1 is most severe, from ${totalFiltered} filtered results)`);
         }
         // Display severity breakdown tables
         this.displaySeverityTable("Original SARIF File", originalSeverityCounts, totalResults);
@@ -68829,8 +68830,8 @@ class SarifUploader {
         console.log('┌──────────┬───────────┐');
         console.log('│ Severity │   Count   │');
         console.log('├──────────┼───────────┤');
-        // Get all severity levels and sort them in descending order
-        const severities = Array.from(severityCounts.keys()).sort((a, b) => b - a);
+        // Get all severity levels and sort them in ascending order (1 is most severe, 5 is least)
+        const severities = Array.from(severityCounts.keys()).sort((a, b) => a - b);
         if (severities.length === 0) {
             console.log('│   N/A    │     0     │');
         }
