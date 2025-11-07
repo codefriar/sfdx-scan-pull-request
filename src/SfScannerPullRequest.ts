@@ -227,7 +227,8 @@ export default class SfScannerPullRequest {
     }
 
     if (this.inputs.exportSarif) {
-      await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
+      // Upload filtered SARIF file (only violations in changed lines)
+      await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL(filePathToChangedLines);
     }
   }
 }
