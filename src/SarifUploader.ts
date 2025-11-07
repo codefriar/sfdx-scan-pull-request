@@ -79,6 +79,10 @@ export default class SarifUploader {
     let filteredResults = 0;
     const maxResults = 50;
 
+    // Track severity counts for original SARIF file
+    const originalSeverityCounts = new Map<number, number>();
+    const filteredSeverityCounts = new Map<number, number>();
+
     // Filter each run's results
     if (sarifJson.runs) {
       sarifJson.runs.forEach((run) => {
@@ -96,6 +100,12 @@ export default class SarifUploader {
             ruleSeverityMap.set(rule.id, rule.properties?.severity || 0);
           });
         }
+
+        // Count original severities
+        run.results.forEach((result) => {
+          const severity = ruleSeverityMap.get(result.ruleId) || 0;
+          originalSeverityCounts.set(severity, (originalSeverityCounts.get(severity) || 0) + 1);
+        });
 
         // Filter results to only include those in changed files and lines
         const filteredResultsForRun = run.results.filter((result) => {
@@ -145,6 +155,12 @@ export default class SarifUploader {
         // Limit to 50 results
         run.results = filteredResultsForRun.slice(0, maxResults);
 
+        // Count filtered severities
+        run.results.forEach((result) => {
+          const severity = ruleSeverityMap.get(result.ruleId) || 0;
+          filteredSeverityCounts.set(severity, (filteredSeverityCounts.get(severity) || 0) + 1);
+        });
+
         filteredResults += run.results.length;
         const truncated = filteredResultsForRun.length > maxResults;
         console.log(
@@ -156,9 +172,45 @@ export default class SarifUploader {
 
     console.log(`Total results: ${totalResults} → ${filteredResults} (filtered, sorted by severity, limited to ${maxResults})`);
 
+    // Display severity breakdown tables
+    this.displaySeverityTable("Original SARIF File", originalSeverityCounts, totalResults);
+    this.displaySeverityTable("Filtered SARIF File", filteredSeverityCounts, filteredResults);
+
     // Write the filtered SARIF to a new file
     fs.writeFileSync(this.filteredSarifPath, JSON.stringify(sarifJson, null, 2));
     console.log(`Filtered SARIF written to: ${this.filteredSarifPath}`);
+  }
+
+  /**
+   * @description Displays a formatted table showing the count of issues by severity level
+   * @param title The title for the table
+   * @param severityCounts Map of severity level to count
+   * @param total Total number of issues
+   */
+  private displaySeverityTable(title: string, severityCounts: Map<number, number>, total: number): void {
+    console.log(`\n${title} - Issues by Severity:`);
+    console.log('┌──────────┬───────────┐');
+    console.log('│ Severity │   Count   │');
+    console.log('├──────────┼───────────┤');
+
+    // Get all severity levels and sort them in descending order
+    const severities = Array.from(severityCounts.keys()).sort((a, b) => b - a);
+
+    if (severities.length === 0) {
+      console.log('│   N/A    │     0     │');
+    } else {
+      severities.forEach((severity) => {
+        const count = severityCounts.get(severity) || 0;
+        const severityStr = severity.toString().padStart(8);
+        const countStr = count.toString().padStart(9);
+        console.log(`│${severityStr} │${countStr} │`);
+      });
+    }
+
+    console.log('├──────────┼───────────┤');
+    const totalStr = total.toString().padStart(9);
+    console.log(`│  Total   │${totalStr} │`);
+    console.log('└──────────┴───────────┘');
   }
 
   /**
