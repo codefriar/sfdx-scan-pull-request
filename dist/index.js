@@ -68579,6 +68579,21 @@ class AnnotationsReporter extends BaseReporter {
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
         if (this.issues) {
+            const maxAnnotations = 50;
+            const totalIssues = this.issues.length;
+            // Sort issues by severity (highest first) and limit to 50
+            const sortedIssues = [...this.issues].sort((a, b) => {
+                // Extract severity from title like "RuleName (sev: 3)"
+                const getSeverity = (title) => {
+                    const match = title.match(/\(sev: (\d+)\)/);
+                    return match ? parseInt(match[1]) : 0;
+                };
+                return getSeverity(b.title) - getSeverity(a.title);
+            });
+            const limitedIssues = sortedIssues.slice(0, maxAnnotations);
+            if (totalIssues > maxAnnotations) {
+                console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, highest first)`);
+            }
             const request = {
                 name: "sfdx-scanner",
                 head_sha: commit_id,
@@ -68586,8 +68601,10 @@ class AnnotationsReporter extends BaseReporter {
                 conclusion: conclusion,
                 output: {
                     title: "Results from sfdx-scanner",
-                    summary: `${this.issues.length} violations found`,
-                    annotations: this.issues,
+                    summary: totalIssues > maxAnnotations
+                        ? `${totalIssues} violations found (showing top ${maxAnnotations} by severity)`
+                        : `${totalIssues} violations found`,
+                    annotations: limitedIssues,
                 },
             };
             this.checkHasHaltingError();
@@ -68687,7 +68704,7 @@ class SarifUploader {
     }
     /**
      * @description Filters the SARIF file to only include results that are in changed files and lines,
-     * sorts by severity (highest first), and limits to 50 results maximum.
+     * sorts by severity (highest first), and limits to 50 results maximum ACROSS ALL ENGINES.
      * @param filePathToChangedLines Map of file paths to the set of changed line numbers
      */
     async filterSarifFile(filePathToChangedLines) {
@@ -68698,14 +68715,14 @@ class SarifUploader {
         const sarifContent = external_fs_.readFileSync(this.sarifPath, "utf-8");
         const sarifJson = JSON.parse(sarifContent);
         let totalResults = 0;
-        let filteredResults = 0;
         const maxResults = 50;
         // Track severity counts for original SARIF file
         const originalSeverityCounts = new Map();
         const filteredSeverityCounts = new Map();
+        const allFilteredResults = [];
         // Filter each run's results
         if (sarifJson.runs) {
-            sarifJson.runs.forEach((run) => {
+            sarifJson.runs.forEach((run, runIndex) => {
                 if (!run.results) {
                     return;
                 }
@@ -68753,26 +68770,47 @@ class SarifUploader {
                     }
                     return false;
                 });
-                // Sort by severity (highest first)
-                filteredResultsForRun.sort((a, b) => {
-                    const severityA = ruleSeverityMap.get(a.ruleId) || 0;
-                    const severityB = ruleSeverityMap.get(b.ruleId) || 0;
-                    return severityB - severityA; // Descending order (highest severity first)
-                });
-                // Limit to 50 results
-                run.results = filteredResultsForRun.slice(0, maxResults);
-                // Count filtered severities
-                run.results.forEach((result) => {
+                // Add filtered results with metadata to the global list
+                filteredResultsForRun.forEach((result) => {
                     const severity = ruleSeverityMap.get(result.ruleId) || 0;
-                    filteredSeverityCounts.set(severity, (filteredSeverityCounts.get(severity) || 0) + 1);
+                    allFilteredResults.push({
+                        result,
+                        severity,
+                        runIndex,
+                    });
                 });
-                filteredResults += run.results.length;
-                const truncated = filteredResultsForRun.length > maxResults;
-                console.log(`  Engine ${run.tool.driver.name}: ${originalCount} → ${filteredResultsForRun.length} results` +
-                    (truncated ? ` → ${run.results.length} (limited to ${maxResults})` : ''));
+                console.log(`  Engine ${run.tool.driver.name}: ${originalCount} → ${filteredResultsForRun.length} results`);
             });
         }
-        console.log(`Total results: ${totalResults} → ${filteredResults} (filtered, sorted by severity, limited to ${maxResults})`);
+        // Sort ALL results by severity (highest first) across all engines
+        allFilteredResults.sort((a, b) => b.severity - a.severity);
+        // Limit to 50 results total
+        const limitedResults = allFilteredResults.slice(0, maxResults);
+        // Count filtered severities
+        limitedResults.forEach((item) => {
+            filteredSeverityCounts.set(item.severity, (filteredSeverityCounts.get(item.severity) || 0) + 1);
+        });
+        // Distribute the limited results back to their respective runs
+        if (sarifJson.runs) {
+            // First, clear all results
+            sarifJson.runs.forEach((run) => {
+                if (run.results) {
+                    run.results = [];
+                }
+            });
+            // Then, add back only the top 50 results
+            limitedResults.forEach((item) => {
+                if (sarifJson.runs && sarifJson.runs[item.runIndex].results) {
+                    sarifJson.runs[item.runIndex].results.push(item.result);
+                }
+            });
+        }
+        const filteredResults = limitedResults.length;
+        const totalFiltered = allFilteredResults.length;
+        console.log(`Total results: ${totalResults} → ${totalFiltered} (after filtering to changed lines)`);
+        if (totalFiltered > maxResults) {
+            console.log(`Limited to top ${maxResults} highest severity violations (from ${totalFiltered} filtered results)`);
+        }
         // Display severity breakdown tables
         this.displaySeverityTable("Original SARIF File", originalSeverityCounts, totalResults);
         this.displaySeverityTable("Filtered SARIF File", filteredSeverityCounts, filteredResults);
