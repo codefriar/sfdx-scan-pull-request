@@ -215,10 +215,14 @@ export default class SfScannerPullRequest {
       return;
     }
 
-    // Set the diffInfo on the reporter so it can validate multi-line comments
+    // Set the diffInfo on the reporter so it can validate comments against the diff
     if (this.reporter instanceof CommentsReporter) {
       (this.reporter as any).diffInfo = filePathToDiffInfo;
     }
+
+    console.log(
+      `Diff contains ${filePathToDiffInfo.size} files with changes`
+    );
 
     // Run the scanner on all files (config file determines what to scan)
     let allFindings = await this.performStaticCodeAnalysis();
