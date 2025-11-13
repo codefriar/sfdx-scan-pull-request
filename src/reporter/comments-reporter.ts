@@ -60,25 +60,16 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
+    // Always use single-line comments to avoid GitHub API issues with multi-line
+    // comments across different diff hunks. Even if a violation spans multiple lines,
+    // we'll comment on just the end line to ensure the comment is always valid.
     const githubReviewComments: GithubReviewComment[] = comments.map(
-      (comment) => {
-        // Only include start_line for multi-line comments where line > start_line
-        const isMultiLine = comment.line > comment.start_line;
-        const reviewComment: GithubReviewComment = {
-          path: comment.path,
-          body: `${comment.body}`,
-          line: comment.line,
-          side: comment.side,
-        };
-
-        // Only add start_line and start_side for actual multi-line comments
-        if (isMultiLine) {
-          reviewComment.start_line = comment.start_line;
-          reviewComment.start_side = comment.start_side;
-        }
-
-        return reviewComment;
-      }
+      (comment) => ({
+        path: comment.path,
+        body: `${comment.body}`,
+        line: comment.line,
+        side: comment.side,
+      })
     );
 
     const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;

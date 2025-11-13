@@ -68259,22 +68259,15 @@ class CommentsReporter extends BaseReporter {
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const pullRequestNumber = github.context.payload.pull_request?.number;
-        const githubReviewComments = comments.map((comment) => {
-            // Only include start_line for multi-line comments where line > start_line
-            const isMultiLine = comment.line > comment.start_line;
-            const reviewComment = {
-                path: comment.path,
-                body: `${comment.body}`,
-                line: comment.line,
-                side: comment.side,
-            };
-            // Only add start_line and start_side for actual multi-line comments
-            if (isMultiLine) {
-                reviewComment.start_line = comment.start_line;
-                reviewComment.start_side = comment.start_side;
-            }
-            return reviewComment;
-        });
+        // Always use single-line comments to avoid GitHub API issues with multi-line
+        // comments across different diff hunks. Even if a violation spans multiple lines,
+        // we'll comment on just the end line to ensure the comment is always valid.
+        const githubReviewComments = comments.map((comment) => ({
+            path: comment.path,
+            body: `${comment.body}`,
+            line: comment.line,
+            side: comment.side,
+        }));
         const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
         const jsonBody = {
             body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
