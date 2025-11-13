@@ -60,38 +60,65 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
-    // Intelligently create multi-line or single-line comments based on hunk info
-    const githubReviewComments: GithubReviewComment[] = comments.map(
+    this.logger(`Processing ${comments.length} comments for PR review`);
+
+    // CRITICAL: Filter out comments where the target line is NOT in the diff
+    const validComments = comments.filter((comment) => {
+      const diffInfo = this.diffInfo.get(comment.path);
+
+      if (!diffInfo) {
+        this.logger(
+          `WARNING: No diff info found for ${comment.path} - rejecting comment`
+        );
+        return false;
+      }
+
+      const lineInDiff = diffInfo.changedLines.has(comment.line);
+
+      if (!lineInDiff) {
+        this.logger(
+          `WARNING: Rejecting comment for ${comment.path} line ${comment.line} - not in diff. Changed lines: ${Array.from(diffInfo.changedLines).sort((a, b) => a - b).join(', ')}`
+        );
+        return false;
+      }
+
+      this.logger(`✓ Comment for ${comment.path} line ${comment.line} is valid`);
+      return true;
+    });
+
+    this.logger(
+      `After filtering: ${validComments.length} valid comments (rejected ${comments.length - validComments.length})`
+    );
+
+    if (validComments.length === 0) {
+      this.logger("No valid comments to submit - all were filtered out");
+      return;
+    }
+
+    // Create review comments with intelligent multi-line vs single-line logic
+    const githubReviewComments: GithubReviewComment[] = validComments.map(
       (comment) => {
-        const isMultiLine = comment.line > comment.start_line;
+        const isMultiLine = comment.line !== comment.start_line;
         const diffInfo = this.diffInfo.get(comment.path);
 
-        console.log(`DEBUG: Processing comment for ${comment.path} lines ${comment.start_line}-${comment.line}`);
+        this.logger(
+          `Creating comment for ${comment.path} lines ${comment.start_line}-${comment.line}`
+        );
 
-        // Verify the line we want to comment on is actually in the diff
-        if (diffInfo) {
-          const lineInDiff = diffInfo.changedLines.has(comment.line);
-          const startLineInDiff = diffInfo.changedLines.has(comment.start_line);
-
-          console.log(`DEBUG:   Line ${comment.line} in diff: ${lineInDiff}`);
-          console.log(`DEBUG:   Start line ${comment.start_line} in diff: ${startLineInDiff}`);
-
-          if (!lineInDiff) {
-            console.warn(`WARNING: Comment line ${comment.line} is NOT in diff for ${comment.path}! This will cause a 422 error.`);
-            console.warn(`Available changed lines: ${Array.from(diffInfo.changedLines).sort((a, b) => a - b).join(', ')}`);
-          }
-        }
-
-        // For multi-line comments, verify both lines are in the same hunk
+        // For multi-line comments, verify both lines are in the diff and in the same hunk
         if (isMultiLine && diffInfo) {
+          const startLineInDiff = diffInfo.changedLines.has(comment.start_line);
+          const endLineInDiff = diffInfo.changedLines.has(comment.line);
           const startHunk = diffInfo.lineToHunk.get(comment.start_line);
           const endHunk = diffInfo.lineToHunk.get(comment.line);
 
-          console.log(`DEBUG:   Start hunk: ${startHunk}, End hunk: ${endHunk}`);
+          this.logger(
+            `  Multi-line: start_line ${comment.start_line} in diff: ${startLineInDiff} (hunk ${startHunk}), end line ${comment.line} in diff: ${endLineInDiff} (hunk ${endHunk})`
+          );
 
-          // Only create multi-line comment if both lines are in the same hunk
-          if (startHunk !== undefined && startHunk === endHunk) {
-            console.log(`DEBUG:   Creating multi-line comment`);
+          // Only create multi-line comment if BOTH lines are in the diff AND in the same hunk
+          if (startLineInDiff && endLineInDiff && startHunk !== undefined && startHunk === endHunk) {
+            this.logger(`  ✓ Creating multi-line comment`);
             return {
               path: comment.path,
               body: `${comment.body}`,
@@ -100,11 +127,15 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
               start_line: comment.start_line,
               start_side: comment.start_side,
             };
+          } else {
+            this.logger(
+              `  ! Falling back to single-line comment on line ${comment.line}`
+            );
           }
         }
 
-        // Fall back to single-line comment
-        console.log(`DEBUG:   Creating single-line comment on line ${comment.line}`);
+        // Single-line comment (or fallback from invalid multi-line)
+        this.logger(`  ✓ Creating single-line comment on line ${comment.line}`);
         return {
           path: comment.path,
           body: `${comment.body}`,
@@ -122,24 +153,30 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       comments: githubReviewComments,
     };
 
-    console.log(`DEBUG: Final review payload with ${githubReviewComments.length} comments:`);
-    console.log(JSON.stringify(jsonBody, null, 2));
-
-    // Write the payload to a file for inspection
-    const fs = require('fs');
-    fs.writeFileSync('pr-review-payload.json', JSON.stringify(jsonBody, null, 2));
-    console.log('DEBUG: Wrote payload to pr-review-payload.json');
+    // Write payload to file for debugging
+    try {
+      const fs = require("fs");
+      fs.writeFileSync(
+        "pr-review-payload.json",
+        JSON.stringify(jsonBody, null, 2)
+      );
+      this.logger("Wrote payload to pr-review-payload.json for inspection");
+    } catch (err) {
+      this.logger(`Failed to write payload file: ${err}`);
+    }
 
     try {
+      this.logger(`Submitting review with ${githubReviewComments.length} comments`);
       await this.octokit.request(`POST ${apiUrl}`, {
         data: jsonBody,
       });
+      this.logger("Successfully created PR review");
     } catch (error) {
       console.error(
         "Error creating pull request review:",
         JSON.stringify(error, null, 2)
       );
-      throw error; // Re-throw so we can see it in the logs
+      throw error;
     }
   }
 
@@ -423,7 +460,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       ? parseInt(violation.endLine)
       : parseInt(violation.line);
 
-    console.log(`DEBUG: Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`);
+    this.logger(
+      `Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`
+    );
 
     const violationType = getScannerViolationType(
       this.inputs,
