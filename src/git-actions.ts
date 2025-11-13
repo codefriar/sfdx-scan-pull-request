@@ -52,20 +52,26 @@ export async function getDiffInPullRequest(
 
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToDiffInfo = new Map<string, DiffInfo>();
+
+  console.log(`DEBUG: Parsing diff for ${files.length} files`);
+
   for (let file of files) {
     if (file.to && file.to !== "/dev/null") {
       const changedLines = new Set<number>();
       const lineToHunk = new Map<number, number>();
 
       file.chunks.forEach((chunk, hunkIndex) => {
+        console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
         for (let change of chunk.changes) {
           if (change.type === "add" || change.type === "del") {
             changedLines.add(change.ln);
             lineToHunk.set(change.ln, hunkIndex);
+            console.log(`DEBUG:   ${change.type} line ${change.ln}`);
           }
         }
       });
 
+      console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
       filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
     }
   }
