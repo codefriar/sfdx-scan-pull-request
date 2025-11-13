@@ -5,7 +5,7 @@ import {
 } from "./sfdxCli.types.js";
 import { PluginInputs } from "./common.js";
 import { Reporter, ReporterProps } from "./reporter/reporter.types.js";
-import { getDiffInPullRequest, GithubPullRequest } from "./git-actions.js";
+import { getDiffInPullRequest, GithubPullRequest, DiffInfo } from "./git-actions.js";
 import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
 import { context } from "@actions/github";
@@ -67,9 +67,11 @@ export default class SfScannerPullRequest {
     this.pullRequest = context?.payload?.pull_request;
     this.validateContext(this.pullRequest);
 
+    // Note: diffInfo will be set later in the workflow after we fetch the diff
     const reporterParams: ReporterProps = {
       inputs: this.inputs,
       context: context,
+      diffInfo: new Map(), // Will be populated in workflow()
     };
 
     this.reporter =
@@ -144,7 +146,7 @@ export default class SfScannerPullRequest {
    */
   private filterFindingsToDiffScope(
     findings: ScannerFinding[],
-    filePathToChangedLines: Map<string, Set<number>>
+    filePathToDiffInfo: Map<string, DiffInfo>
   ) {
     console.log(
       "Filtering the findings to just the lines which are part of the changed files..."
@@ -154,8 +156,8 @@ export default class SfScannerPullRequest {
       const filePath = finding.fileName
         .replace(process.cwd() + "/", "")
         .replace("file:", "");
-      const relevantLines =
-        filePathToChangedLines.get(filePath) || new Set<number>();
+      const diffInfo = filePathToDiffInfo.get(filePath);
+      const relevantLines = diffInfo?.changedLines || new Set<number>();
       for (let violation of finding.violations) {
         if (!this.isInChangedLines(violation, relevantLines)) {
           continue;
@@ -202,22 +204,27 @@ export default class SfScannerPullRequest {
     console.log("Beginning sf-scanner-pull-request run...");
 
     // Get the diff to determine which lines changed in which files
-    let filePathToChangedLines = await getDiffInPullRequest(
+    let filePathToDiffInfo = await getDiffInPullRequest(
       this.pullRequest?.base?.ref,
       this.pullRequest?.head?.ref,
       this.pullRequest?.base?.repo?.clone_url
     );
 
-    if (filePathToChangedLines.size === 0) {
+    if (filePathToDiffInfo.size === 0) {
       console.log("There are no changed files - exiting now.");
       return;
+    }
+
+    // Set the diffInfo on the reporter so it can validate multi-line comments
+    if (this.reporter instanceof CommentsReporter) {
+      (this.reporter as any).diffInfo = filePathToDiffInfo;
     }
 
     // Run the scanner on all files (config file determines what to scan)
     let allFindings = await this.performStaticCodeAnalysis();
 
     // Filter findings to only show violations in changed lines
-    this.filterFindingsToDiffScope(allFindings, filePathToChangedLines);
+    this.filterFindingsToDiffScope(allFindings, filePathToDiffInfo);
 
     try {
       this.reporter.write();
@@ -228,6 +235,11 @@ export default class SfScannerPullRequest {
 
     if (this.inputs.exportSarif) {
       // Upload filtered SARIF file (only violations in changed lines)
+      // Convert DiffInfo map to simple Set<number> map for SARIF uploader
+      const filePathToChangedLines = new Map<string, Set<number>>();
+      filePathToDiffInfo.forEach((diffInfo, filePath) => {
+        filePathToChangedLines.set(filePath, diffInfo.changedLines);
+      });
       await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL(filePathToChangedLines);
     }
   }

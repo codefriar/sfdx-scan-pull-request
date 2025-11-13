@@ -60,24 +60,39 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const repo = context.repo.repo;
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
+    // Intelligently create multi-line or single-line comments based on hunk info
     const githubReviewComments: GithubReviewComment[] = comments.map(
       (comment) => {
-        // Only include start_line for multi-line comments where line > start_line
         const isMultiLine = comment.line > comment.start_line;
-        const reviewComment: GithubReviewComment = {
+
+        // For multi-line comments, verify both lines are in the same hunk
+        if (isMultiLine) {
+          const diffInfo = this.diffInfo.get(comment.path);
+          if (diffInfo) {
+            const startHunk = diffInfo.lineToHunk.get(comment.start_line);
+            const endHunk = diffInfo.lineToHunk.get(comment.line);
+
+            // Only create multi-line comment if both lines are in the same hunk
+            if (startHunk !== undefined && startHunk === endHunk) {
+              return {
+                path: comment.path,
+                body: `${comment.body}`,
+                line: comment.line,
+                side: comment.side,
+                start_line: comment.start_line,
+                start_side: comment.start_side,
+              };
+            }
+          }
+        }
+
+        // Fall back to single-line comment
+        return {
           path: comment.path,
           body: `${comment.body}`,
           line: comment.line,
           side: comment.side,
         };
-
-        // Only add start_line and start_side for actual multi-line comments
-        if (isMultiLine) {
-          reviewComment.start_line = comment.start_line;
-          reviewComment.start_side = comment.start_side;
-        }
-
-        return reviewComment;
       }
     );
 

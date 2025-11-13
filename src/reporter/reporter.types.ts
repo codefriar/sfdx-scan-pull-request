@@ -14,6 +14,7 @@
 import { PluginInputs } from "../common.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { Context } from "@actions/github/lib/context.js";
+import { DiffInfo } from "../git-actions.js";
 
 export type GithubCheckRun = {
   name: string;
@@ -75,6 +76,7 @@ export type GithubExistingComment = GithubComment & {
 export type ReporterProps = {
   context: Context;
   inputs: PluginInputs;
+  diffInfo: Map<string, DiffInfo>;
 };
 
 export interface Reporter {

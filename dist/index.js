@@ -64164,7 +64164,7 @@ const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 /**
  * @description Calculates the diff for all files within the pull request and
- * populates a map of filePath -> Set of changed line numbers
+ * populates a map of filePath -> DiffInfo with changed line numbers and hunk info
  */
 async function getDiffInPullRequest(baseRef, headRef, destination) {
     if (destination) {
@@ -64177,21 +64177,23 @@ async function getDiffInPullRequest(baseRef, headRef, destination) {
      */
     (0,external_child_process_namespaceObject.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
     const files = parse_diff(external_fs_.readFileSync(DIFF_OUTPUT).toString());
-    const filePathToChangedLines = new Map();
+    const filePathToDiffInfo = new Map();
     for (let file of files) {
         if (file.to && file.to !== "/dev/null") {
             const changedLines = new Set();
-            for (let chunk of file.chunks) {
+            const lineToHunk = new Map();
+            file.chunks.forEach((chunk, hunkIndex) => {
                 for (let change of chunk.changes) {
                     if (change.type === "add" || change.type === "del") {
                         changedLines.add(change.ln);
+                        lineToHunk.set(change.ln, hunkIndex);
                     }
                 }
-            }
-            filePathToChangedLines.set(file.to, changedLines);
+            });
+            filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
         }
     }
-    return filePathToChangedLines;
+    return filePathToDiffInfo;
 }
 //# sourceMappingURL=git-actions.js.map
 // EXTERNAL MODULE: external "path"
@@ -68197,12 +68199,14 @@ class BaseReporter {
     inputs;
     issues;
     context;
+    diffInfo;
     octokit = new CustomOctokit();
-    constructor({ context, inputs }) {
+    constructor({ context, inputs, diffInfo }) {
         this.hasHaltingError = false;
         this.issues = [];
         this.context = context;
         this.inputs = inputs;
+        this.diffInfo = diffInfo;
     }
     write() {
         throw new Error("Method not implemented.");
@@ -68259,21 +68263,35 @@ class CommentsReporter extends BaseReporter {
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const pullRequestNumber = github.context.payload.pull_request?.number;
+        // Intelligently create multi-line or single-line comments based on hunk info
         const githubReviewComments = comments.map((comment) => {
-            // Only include start_line for multi-line comments where line > start_line
             const isMultiLine = comment.line > comment.start_line;
-            const reviewComment = {
+            // For multi-line comments, verify both lines are in the same hunk
+            if (isMultiLine) {
+                const diffInfo = this.diffInfo.get(comment.path);
+                if (diffInfo) {
+                    const startHunk = diffInfo.lineToHunk.get(comment.start_line);
+                    const endHunk = diffInfo.lineToHunk.get(comment.line);
+                    // Only create multi-line comment if both lines are in the same hunk
+                    if (startHunk !== undefined && startHunk === endHunk) {
+                        return {
+                            path: comment.path,
+                            body: `${comment.body}`,
+                            line: comment.line,
+                            side: comment.side,
+                            start_line: comment.start_line,
+                            start_side: comment.start_side,
+                        };
+                    }
+                }
+            }
+            // Fall back to single-line comment
+            return {
                 path: comment.path,
                 body: `${comment.body}`,
                 line: comment.line,
                 side: comment.side,
             };
-            // Only add start_line and start_side for actual multi-line comments
-            if (isMultiLine) {
-                reviewComment.start_line = comment.start_line;
-                reviewComment.start_side = comment.start_side;
-            }
-            return reviewComment;
         });
         const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
         const jsonBody = {
@@ -68939,9 +68957,11 @@ class SfScannerPullRequest {
         };
         this.pullRequest = github.context?.payload?.pull_request;
         this.validateContext(this.pullRequest);
+        // Note: diffInfo will be set later in the workflow after we fetch the diff
         const reporterParams = {
             inputs: this.inputs,
             context: github.context,
+            diffInfo: new Map(), // Will be populated in workflow()
         };
         this.reporter =
             this.inputs.reportMode === "comments"
@@ -69000,13 +69020,14 @@ class SfScannerPullRequest {
      * If a finding exists and covers a changed line, then translate that finding
      * object into a comment object.
      */
-    filterFindingsToDiffScope(findings, filePathToChangedLines) {
+    filterFindingsToDiffScope(findings, filePathToDiffInfo) {
         console.log("Filtering the findings to just the lines which are part of the changed files...");
         for (let finding of findings) {
             const filePath = finding.fileName
                 .replace(process.cwd() + "/", "")
                 .replace("file:", "");
-            const relevantLines = filePathToChangedLines.get(filePath) || new Set();
+            const diffInfo = filePathToDiffInfo.get(filePath);
+            const relevantLines = diffInfo?.changedLines || new Set();
             for (let violation of finding.violations) {
                 if (!this.isInChangedLines(violation, relevantLines)) {
                     continue;
@@ -69037,15 +69058,19 @@ class SfScannerPullRequest {
     async workflow() {
         console.log("Beginning sf-scanner-pull-request run...");
         // Get the diff to determine which lines changed in which files
-        let filePathToChangedLines = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
-        if (filePathToChangedLines.size === 0) {
+        let filePathToDiffInfo = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
+        if (filePathToDiffInfo.size === 0) {
             console.log("There are no changed files - exiting now.");
             return;
+        }
+        // Set the diffInfo on the reporter so it can validate multi-line comments
+        if (this.reporter instanceof CommentsReporter) {
+            this.reporter.diffInfo = filePathToDiffInfo;
         }
         // Run the scanner on all files (config file determines what to scan)
         let allFindings = await this.performStaticCodeAnalysis();
         // Filter findings to only show violations in changed lines
-        this.filterFindingsToDiffScope(allFindings, filePathToChangedLines);
+        this.filterFindingsToDiffScope(allFindings, filePathToDiffInfo);
         try {
             this.reporter.write();
         }
@@ -69055,6 +69080,11 @@ class SfScannerPullRequest {
         }
         if (this.inputs.exportSarif) {
             // Upload filtered SARIF file (only violations in changed lines)
+            // Convert DiffInfo map to simple Set<number> map for SARIF uploader
+            const filePathToChangedLines = new Map();
+            filePathToDiffInfo.forEach((diffInfo, filePath) => {
+                filePathToChangedLines.set(filePath, diffInfo.changedLines);
+            });
             await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL(filePathToChangedLines);
         }
     }

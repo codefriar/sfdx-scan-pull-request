@@ -21,8 +21,16 @@ const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 export type GithubPullRequest = typeof context.payload.pull_request | undefined;
 
 /**
+ * Information about changed lines in a file, including which hunk they belong to
+ */
+export type DiffInfo = {
+  changedLines: Set<number>;
+  lineToHunk: Map<number, number>; // Maps line number to hunk index
+};
+
+/**
  * @description Calculates the diff for all files within the pull request and
- * populates a map of filePath -> Set of changed line numbers
+ * populates a map of filePath -> DiffInfo with changed line numbers and hunk info
  */
 export async function getDiffInPullRequest(
   baseRef: string,
@@ -43,19 +51,23 @@ export async function getDiffInPullRequest(
   );
 
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
-  const filePathToChangedLines = new Map<string, Set<number>>();
+  const filePathToDiffInfo = new Map<string, DiffInfo>();
   for (let file of files) {
     if (file.to && file.to !== "/dev/null") {
       const changedLines = new Set<number>();
-      for (let chunk of file.chunks) {
+      const lineToHunk = new Map<number, number>();
+
+      file.chunks.forEach((chunk, hunkIndex) => {
         for (let change of chunk.changes) {
           if (change.type === "add" || change.type === "del") {
             changedLines.add(change.ln);
+            lineToHunk.set(change.ln, hunkIndex);
           }
         }
-      }
-      filePathToChangedLines.set(file.to, changedLines);
+      });
+
+      filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
     }
   }
-  return filePathToChangedLines;
+  return filePathToDiffInfo;
 }
