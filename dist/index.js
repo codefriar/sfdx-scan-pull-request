@@ -64178,18 +64178,22 @@ async function getDiffInPullRequest(baseRef, headRef, destination) {
     (0,external_child_process_namespaceObject.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
     const files = parse_diff(external_fs_.readFileSync(DIFF_OUTPUT).toString());
     const filePathToDiffInfo = new Map();
+    console.log(`DEBUG: Parsing diff for ${files.length} files`);
     for (let file of files) {
         if (file.to && file.to !== "/dev/null") {
             const changedLines = new Set();
             const lineToHunk = new Map();
             file.chunks.forEach((chunk, hunkIndex) => {
+                console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
                 for (let change of chunk.changes) {
                     if (change.type === "add" || change.type === "del") {
                         changedLines.add(change.ln);
                         lineToHunk.set(change.ln, hunkIndex);
+                        console.log(`DEBUG:   ${change.type} line ${change.ln}`);
                     }
                 }
             });
+            console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
             filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
         }
     }
@@ -68266,26 +68270,39 @@ class CommentsReporter extends BaseReporter {
         // Intelligently create multi-line or single-line comments based on hunk info
         const githubReviewComments = comments.map((comment) => {
             const isMultiLine = comment.line > comment.start_line;
+            const diffInfo = this.diffInfo.get(comment.path);
+            console.log(`DEBUG: Processing comment for ${comment.path} lines ${comment.start_line}-${comment.line}`);
+            // Verify the line we want to comment on is actually in the diff
+            if (diffInfo) {
+                const lineInDiff = diffInfo.changedLines.has(comment.line);
+                const startLineInDiff = diffInfo.changedLines.has(comment.start_line);
+                console.log(`DEBUG:   Line ${comment.line} in diff: ${lineInDiff}`);
+                console.log(`DEBUG:   Start line ${comment.start_line} in diff: ${startLineInDiff}`);
+                if (!lineInDiff) {
+                    console.warn(`WARNING: Comment line ${comment.line} is NOT in diff for ${comment.path}! This will cause a 422 error.`);
+                    console.warn(`Available changed lines: ${Array.from(diffInfo.changedLines).sort((a, b) => a - b).join(', ')}`);
+                }
+            }
             // For multi-line comments, verify both lines are in the same hunk
-            if (isMultiLine) {
-                const diffInfo = this.diffInfo.get(comment.path);
-                if (diffInfo) {
-                    const startHunk = diffInfo.lineToHunk.get(comment.start_line);
-                    const endHunk = diffInfo.lineToHunk.get(comment.line);
-                    // Only create multi-line comment if both lines are in the same hunk
-                    if (startHunk !== undefined && startHunk === endHunk) {
-                        return {
-                            path: comment.path,
-                            body: `${comment.body}`,
-                            line: comment.line,
-                            side: comment.side,
-                            start_line: comment.start_line,
-                            start_side: comment.start_side,
-                        };
-                    }
+            if (isMultiLine && diffInfo) {
+                const startHunk = diffInfo.lineToHunk.get(comment.start_line);
+                const endHunk = diffInfo.lineToHunk.get(comment.line);
+                console.log(`DEBUG:   Start hunk: ${startHunk}, End hunk: ${endHunk}`);
+                // Only create multi-line comment if both lines are in the same hunk
+                if (startHunk !== undefined && startHunk === endHunk) {
+                    console.log(`DEBUG:   Creating multi-line comment`);
+                    return {
+                        path: comment.path,
+                        body: `${comment.body}`,
+                        line: comment.line,
+                        side: comment.side,
+                        start_line: comment.start_line,
+                        start_side: comment.start_side,
+                    };
                 }
             }
             // Fall back to single-line comment
+            console.log(`DEBUG:   Creating single-line comment on line ${comment.line}`);
             return {
                 path: comment.path,
                 body: `${comment.body}`,
@@ -68299,6 +68316,12 @@ class CommentsReporter extends BaseReporter {
             event: "REQUEST_CHANGES",
             comments: githubReviewComments,
         };
+        console.log(`DEBUG: Final review payload with ${githubReviewComments.length} comments:`);
+        console.log(JSON.stringify(jsonBody, null, 2));
+        // Write the payload to a file for inspection
+        const fs = require('fs');
+        fs.writeFileSync('pr-review-payload.json', JSON.stringify(jsonBody, null, 2));
+        console.log('DEBUG: Wrote payload to pr-review-payload.json');
         try {
             await this.octokit.request(`POST ${apiUrl}`, {
                 data: jsonBody,
@@ -68306,6 +68329,7 @@ class CommentsReporter extends BaseReporter {
         }
         catch (error) {
             console.error("Error creating pull request review:", JSON.stringify(error, null, 2));
+            throw error; // Re-throw so we can see it in the logs
         }
     }
     /**
@@ -68507,6 +68531,7 @@ class CommentsReporter extends BaseReporter {
         const endLine = violation.endLine
             ? parseInt(violation.endLine)
             : parseInt(violation.line);
+        console.log(`DEBUG: Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`);
         const violationType = getScannerViolationType(this.inputs, violation, engine);
         // if (violationType === ERROR) {
         //   this.hasHaltingError = true;
