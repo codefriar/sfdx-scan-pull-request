@@ -70,6 +70,7 @@ export default class SfScannerPullRequest {
     const reporterParams: ReporterProps = {
       inputs: this.inputs,
       context: context,
+      diffInfo: new Map(), // Will be populated in workflow()
     };
 
     this.reporter =
@@ -212,6 +213,13 @@ export default class SfScannerPullRequest {
       console.log("There are no changed files - exiting now.");
       return;
     }
+
+    // Set the diffInfo on the reporter so it can validate comments against the diff
+    (this.reporter as any).diffInfo = filePathToChangedLines;
+
+    console.log(
+      `Diff contains ${filePathToChangedLines.size} files with changes`
+    );
 
     // Run the scanner on all files (config file determines what to scan)
     let allFindings = await this.performStaticCodeAnalysis();

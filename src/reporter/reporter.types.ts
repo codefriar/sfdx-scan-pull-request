@@ -58,8 +58,8 @@ export type GithubComment = {
 
 export type GithubReviewComment = {
   path: string;
-  start_line: number;
-  start_side: GithubCommentSide;
+  start_line?: number;
+  start_side?: GithubCommentSide;
   side: GithubCommentSide;
   line: number;
   body: string;
@@ -75,6 +75,7 @@ export type GithubExistingComment = GithubComment & {
 export type ReporterProps = {
   context: Context;
   inputs: PluginInputs;
+  diffInfo: Map<string, Set<number>>;
 };
 
 export interface Reporter {

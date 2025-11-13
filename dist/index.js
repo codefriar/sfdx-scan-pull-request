@@ -68197,12 +68197,14 @@ class BaseReporter {
     inputs;
     issues;
     context;
+    diffInfo;
     octokit = new CustomOctokit();
-    constructor({ context, inputs }) {
+    constructor({ context, inputs, diffInfo }) {
         this.hasHaltingError = false;
         this.issues = [];
         this.context = context;
         this.inputs = inputs;
+        this.diffInfo = diffInfo;
     }
     write() {
         throw new Error("Method not implemented.");
@@ -68259,27 +68261,87 @@ class CommentsReporter extends BaseReporter {
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const pullRequestNumber = github.context.payload.pull_request?.number;
-        const githubReviewComments = comments.map((comment) => ({
-            path: comment.path,
-            body: `${comment.body}`,
-            line: comment.line > comment.start_line ? comment.line : comment.line + 1,
-            side: comment.side,
-            start_line: comment.start_line,
-            start_side: comment.start_side,
-        }));
+        this.logger(`Processing ${comments.length} comments for PR review`);
+        // CRITICAL: Filter out comments where the target line is NOT in the diff
+        const validComments = comments.filter((comment) => {
+            const diffInfo = this.diffInfo.get(comment.path);
+            if (!diffInfo) {
+                this.logger(`WARNING: No diff info found for ${comment.path} - rejecting comment`);
+                return false;
+            }
+            const lineInDiff = diffInfo.has(comment.line);
+            if (!lineInDiff) {
+                this.logger(`WARNING: Rejecting comment for ${comment.path} line ${comment.line} - not in diff. Changed lines: ${Array.from(diffInfo).sort((a, b) => a - b).join(', ')}`);
+                return false;
+            }
+            this.logger(`✓ Comment for ${comment.path} line ${comment.line} is valid`);
+            return true;
+        });
+        this.logger(`After filtering: ${validComments.length} valid comments (rejected ${comments.length - validComments.length})`);
+        if (validComments.length === 0) {
+            this.logger("No valid comments to submit - all were filtered out");
+            return;
+        }
+        // Create review comments with intelligent multi-line vs single-line logic
+        const githubReviewComments = validComments.map((comment) => {
+            const isMultiLine = comment.line !== comment.start_line;
+            const diffInfo = this.diffInfo.get(comment.path);
+            this.logger(`Creating comment for ${comment.path} lines ${comment.start_line}-${comment.line}`);
+            // For multi-line comments, verify both lines are in the diff
+            if (isMultiLine && diffInfo) {
+                const startLineInDiff = diffInfo.has(comment.start_line);
+                const endLineInDiff = diffInfo.has(comment.line);
+                this.logger(`  Multi-line: start_line ${comment.start_line} in diff: ${startLineInDiff}, end line ${comment.line} in diff: ${endLineInDiff}`);
+                // Only create multi-line comment if BOTH lines are in the diff
+                if (startLineInDiff && endLineInDiff) {
+                    this.logger(`  ✓ Creating multi-line comment`);
+                    return {
+                        path: comment.path,
+                        body: `${comment.body}`,
+                        line: comment.line,
+                        side: comment.side,
+                        start_line: comment.start_line,
+                        start_side: comment.start_side,
+                    };
+                }
+                else {
+                    this.logger(`  ! Falling back to single-line comment on line ${comment.line}`);
+                }
+            }
+            // Single-line comment (or fallback from invalid multi-line)
+            this.logger(`  ✓ Creating single-line comment on line ${comment.line}`);
+            return {
+                path: comment.path,
+                body: `${comment.body}`,
+                line: comment.line,
+                side: comment.side,
+            };
+        });
         const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
         const jsonBody = {
             body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
             event: "REQUEST_CHANGES",
             comments: githubReviewComments,
         };
+        // Write payload to file for debugging
         try {
+            const fs = require("fs");
+            fs.writeFileSync("pr-review-payload.json", JSON.stringify(jsonBody, null, 2));
+            this.logger("Wrote payload to pr-review-payload.json for inspection");
+        }
+        catch (err) {
+            this.logger(`Failed to write payload file: ${err}`);
+        }
+        try {
+            this.logger(`Submitting review with ${githubReviewComments.length} comments`);
             await this.octokit.request(`POST ${apiUrl}`, {
                 data: jsonBody,
             });
+            this.logger("Successfully created PR review");
         }
         catch (error) {
             console.error("Error creating pull request review:", JSON.stringify(error, null, 2));
+            throw error;
         }
     }
     /**
@@ -68478,12 +68540,10 @@ class CommentsReporter extends BaseReporter {
      */
     translateViolationToReport(filePath, violation, engine) {
         const startLine = parseInt(violation.line);
-        let endLine = violation.endLine
+        const endLine = violation.endLine
             ? parseInt(violation.endLine)
             : parseInt(violation.line);
-        if (endLine === startLine) {
-            endLine++;
-        }
+        this.logger(`Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`);
         const violationType = getScannerViolationType(this.inputs, violation, engine);
         // if (violationType === ERROR) {
         //   this.hasHaltingError = true;
@@ -68937,6 +68997,7 @@ class SfScannerPullRequest {
         const reporterParams = {
             inputs: this.inputs,
             context: github.context,
+            diffInfo: new Map(), // Will be populated in workflow()
         };
         this.reporter =
             this.inputs.reportMode === "comments"
@@ -69037,6 +69098,9 @@ class SfScannerPullRequest {
             console.log("There are no changed files - exiting now.");
             return;
         }
+        // Set the diffInfo on the reporter so it can validate comments against the diff
+        this.reporter.diffInfo = filePathToChangedLines;
+        console.log(`Diff contains ${filePathToChangedLines.size} files with changes`);
         // Run the scanner on all files (config file determines what to scan)
         let allFindings = await this.performStaticCodeAnalysis();
         // Filter findings to only show violations in changed lines

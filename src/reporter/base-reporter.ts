@@ -45,13 +45,15 @@ export abstract class BaseReporter<T> implements Reporter {
   protected inputs: PluginInputs;
   protected issues: T[];
   protected context;
+  protected diffInfo: Map<string, Set<number>>;
   protected octokit = new CustomOctokit();
 
-  constructor({ context, inputs }: ReporterProps) {
+  constructor({ context, inputs, diffInfo }: ReporterProps) {
     this.hasHaltingError = false;
     this.issues = [];
     this.context = context;
     this.inputs = inputs;
+    this.diffInfo = diffInfo;
   }
 
   write(): void {
