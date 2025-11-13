@@ -61,15 +61,24 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     const pullRequestNumber = context.payload.pull_request?.number as number;
 
     const githubReviewComments: GithubReviewComment[] = comments.map(
-      (comment) => ({
-        path: comment.path,
-        body: `${comment.body}`,
-        line:
-          comment.line > comment.start_line ? comment.line : comment.line + 1,
-        side: comment.side,
-        start_line: comment.start_line,
-        start_side: comment.start_side,
-      })
+      (comment) => {
+        // Only include start_line for multi-line comments where line > start_line
+        const isMultiLine = comment.line > comment.start_line;
+        const reviewComment: GithubReviewComment = {
+          path: comment.path,
+          body: `${comment.body}`,
+          line: comment.line,
+          side: comment.side,
+        };
+
+        // Only add start_line and start_side for actual multi-line comments
+        if (isMultiLine) {
+          reviewComment.start_line = comment.start_line;
+          reviewComment.start_side = comment.start_side;
+        }
+
+        return reviewComment;
+      }
     );
 
     const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
@@ -368,12 +377,9 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
     engine: string
   ): void {
     const startLine = parseInt(violation.line);
-    let endLine = violation.endLine
+    const endLine = violation.endLine
       ? parseInt(violation.endLine)
       : parseInt(violation.line);
-    if (endLine === startLine) {
-      endLine++;
-    }
 
     const violationType = getScannerViolationType(
       this.inputs,

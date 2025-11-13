@@ -68259,14 +68259,22 @@ class CommentsReporter extends BaseReporter {
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const pullRequestNumber = github.context.payload.pull_request?.number;
-        const githubReviewComments = comments.map((comment) => ({
-            path: comment.path,
-            body: `${comment.body}`,
-            line: comment.line > comment.start_line ? comment.line : comment.line + 1,
-            side: comment.side,
-            start_line: comment.start_line,
-            start_side: comment.start_side,
-        }));
+        const githubReviewComments = comments.map((comment) => {
+            // Only include start_line for multi-line comments where line > start_line
+            const isMultiLine = comment.line > comment.start_line;
+            const reviewComment = {
+                path: comment.path,
+                body: `${comment.body}`,
+                line: comment.line,
+                side: comment.side,
+            };
+            // Only add start_line and start_side for actual multi-line comments
+            if (isMultiLine) {
+                reviewComment.start_line = comment.start_line;
+                reviewComment.start_side = comment.start_side;
+            }
+            return reviewComment;
+        });
         const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
         const jsonBody = {
             body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
@@ -68478,12 +68486,9 @@ class CommentsReporter extends BaseReporter {
      */
     translateViolationToReport(filePath, violation, engine) {
         const startLine = parseInt(violation.line);
-        let endLine = violation.endLine
+        const endLine = violation.endLine
             ? parseInt(violation.endLine)
             : parseInt(violation.line);
-        if (endLine === startLine) {
-            endLine++;
-        }
         const violationType = getScannerViolationType(this.inputs, violation, engine);
         // if (violationType === ERROR) {
         //   this.hasHaltingError = true;
