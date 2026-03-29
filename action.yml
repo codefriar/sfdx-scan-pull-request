@@ -49,5 +49,5 @@ inputs:
     description: "Set `true` to export the scan results in SARIF format"
     default: "false"
 runs:
-  using: "node22"
+  using: "node24"
   main: "dist/index.js"
