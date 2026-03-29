@@ -48,7 +48,7 @@ export default class SfScannerPullRequest {
      * They are defined as configurable in the action.yml file.
      */
     this.inputs = {
-      reportMode: getInput("report-mode") || "check-runs",
+      reportMode: (getInput("report-mode") || "check-runs") as "comments" | "check-runs",
       customPmdRules: getInput("custom-pmd-rules"),
       maxNumberOfComments: parseInt(getInput("max-number-of-comments")) || 100, // default of 100 comments
       rateLimitWaitTime: parseInt(getInput("rate-limit-wait-time")) || 60000, // default of 1 minute
