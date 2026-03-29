@@ -10,7 +10,7 @@ import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
 import { context } from "@actions/github";
 import { CommentsReporter } from "./reporter/comments-reporter.js";
-import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
+import { AnnotationsReporter } from "./reporter/annotations-reporter.js";
 import { ExecSyncError } from "./index.types.js";
 import SarifUploader from "./SarifUploader.js";
 import { getRequiredEngines } from "./engine-selection.js";
