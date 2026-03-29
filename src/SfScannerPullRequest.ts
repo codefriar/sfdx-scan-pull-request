@@ -13,6 +13,7 @@ import { CommentsReporter } from "./reporter/comments-reporter.js";
 import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
 import { ExecSyncError } from "./index.types.js";
 import SarifUploader from "./SarifUploader.js";
+import { getRequiredEngines } from "./engine-selection.js";
 
 /**
  * @description This is the main class for the sfdx scanner pull request action.
@@ -260,6 +261,22 @@ export default class SfScannerPullRequest {
       console.log("There are no files to scan - exiting now.");
       return;
     }
+
+    const requiredEngines = getRequiredEngines(
+      filesToScan as string[],
+      this.scannerFlags.engine
+    );
+    if (requiredEngines.length === 0) {
+      console.log(
+        "No relevant scanner engines for the changed file types - exiting now."
+      );
+      return;
+    }
+    this.scannerFlags.engine = requiredEngines.join(",");
+    console.log(
+      `Running scanner with engines: ${this.scannerFlags.engine}`
+    );
+
     this.scannerFlags.target = filesToScan.join(",");
     if (this.inputs.customPmdRules) {
       await this.registerCustomScannerRules(this.inputs.customPmdRules);
