@@ -99,7 +99,7 @@ export default class SfScannerPullRequest {
   }
 
   /**
-   * @desscription validates that the execution context is a pull request, and that we have a valid target reference
+   * @description validates that the execution context is a pull request, and that we have a valid target reference
    * @param pullRequest
    * @param target
    */
@@ -204,7 +204,7 @@ export default class SfScannerPullRequest {
    */
   private getFilesToScan(
     filePathToChangedLines: Map<string, Set<number>>,
-    target: String
+    target: string
   ) {
     if (target) {
       return [target];
