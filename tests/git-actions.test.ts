@@ -1,59 +1,74 @@
-import { expect, it, describe } from "@jest/globals";
-import { execSync } from "child_process";
-import { writeFileSync, unlinkSync } from "fs";
-
+import { expect, it, describe, beforeEach } from "@jest/globals";
+import { execFileSync } from "child_process";
+import fs from "fs";
 import { getDiffInPullRequest } from "../src/git-actions";
 
-// useful for local testing; omitted via CI runs due to ambiguous references
-describe.skip("Git action tests", () => {
-  it("returns diff info successfully", async () => {
-    const testFilePath = "github-test-file";
+jest.mock("child_process");
+jest.mock("fs");
+jest.mock("@actions/github", () => ({
+  context: { repo: { owner: "test-owner", repo: "test-repo" }, sha: "abc123" },
+}));
 
-    writeFileSync(testFilePath, "some data to write");
-    execSync(`git add ${testFilePath}`);
+const sampleDiff = `diff --git a/src/Foo.cls b/src/Foo.cls
+--- a/src/Foo.cls
++++ b/src/Foo.cls
+@@ -1,3 +1,5 @@
+ public class Foo {
++    public void bar() {
++        System.debug('hello');
++    }
+ }
+diff --git a/src/Bar.cls b/src/Bar.cls
+deleted file mode 100644
+--- a/src/Bar.cls
++++ /dev/null
+@@ -1,3 +0,0 @@
+-public class Bar {
+-    // deleted
+-}
+`;
 
-    const diff = await getDiffInPullRequest([
-      execSync("git rev-parse --abbrev-ref HEAD").toString().trim(),
-    ]);
-
-    const newLines = diff.get(testFilePath);
-
-    try {
-      expect(newLines).toBeTruthy();
-      expect(newLines?.size).toBeGreaterThan(0);
-    } catch (_) {
-      throw _;
-    } finally {
-      unlinkSync(testFilePath);
-      execSync(`git add ${testFilePath}`);
-    }
+describe("getDiffInPullRequest", () => {
+  beforeEach(() => {
+    jest.resetAllMocks();
+    (execFileSync as jest.Mock).mockReturnValue(Buffer.from(""));
+    (fs.readFileSync as jest.Mock).mockReturnValue(sampleDiff);
+    (fs.writeFileSync as jest.Mock).mockReturnValue(undefined);
   });
 
-  const fiftySecondsRunTime = 50 * 1000;
+  it("should return changed lines mapped by file path", async () => {
+    const result = await getDiffInPullRequest("main", "feature-branch");
+    expect(result.has("src/Foo.cls")).toBe(true);
+    expect(result.get("src/Foo.cls")!.size).toBe(3);
+  });
 
-  it(
-    "adds remote origin & properly points PR args to git remotes",
-    async () => {
-      const removeRemote = () => {
-        try {
-          execSync("git remote remove destination");
-        } catch (_) {
-          // no-op
-        }
-      };
+  it("should exclude deleted files (/dev/null)", async () => {
+    const result = await getDiffInPullRequest("main", "feature-branch");
+    expect(result.has("src/Bar.cls")).toBe(false);
+  });
 
-      removeRemote();
-      const pullRequestArgs = ["main", "main"];
-      await getDiffInPullRequest(
-        pullRequestArgs,
-        "https://github.com/mitchspano/sfdx-scan-pull-request.git"
-      );
+  it("should add destination remote when provided", async () => {
+    await getDiffInPullRequest("main", "feature-branch", "https://github.com/org/repo.git");
+    expect(execFileSync).toHaveBeenCalledWith(
+      "git", ["remote", "add", "-f", "destination", "https://github.com/org/repo.git"],
+      expect.anything()
+    );
+  });
 
-      const remotes = execSync("git remote").toString();
+  it("should not add destination remote when not provided", async () => {
+    await getDiffInPullRequest("main", "feature-branch");
+    const calls = (execFileSync as jest.Mock).mock.calls;
+    const remoteAddCalls = calls.filter((call: any[]) => call[0] === "git" && call[1]?.[0] === "remote");
+    expect(remoteAddCalls).toHaveLength(0);
+  });
 
-      expect(remotes.indexOf("destination") > -1).toBeTruthy();
-      removeRemote();
-    },
-    fiftySecondsRunTime
-  );
+  it("should sanitize branch refs to prevent shell injection", async () => {
+    await getDiffInPullRequest("main; rm -rf /", "feature; cat /etc/passwd");
+    const diffCall = (execFileSync as jest.Mock).mock.calls.find(
+      (call: any[]) => call[1]?.[0] === "diff"
+    );
+    expect(diffCall).toBeDefined();
+    const refArg = diffCall![1][1] as string;
+    expect(refArg).not.toContain(";");
+  });
 });

@@ -14,11 +14,19 @@
 import parse from "parse-diff";
 import fs from "fs";
 import { context } from "@actions/github";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 
 export type GithubPullRequest = typeof context.payload.pull_request | undefined;
+
+/**
+ * @description Sanitizes a string for use as a git ref by removing
+ * characters that could be used for shell injection.
+ */
+function sanitizeRef(ref: string): string {
+  return ref.replace(/[^a-zA-Z0-9_./-]/g, "");
+}
 
 /**
  * @description Calculates the diff for all files within the pull request and
@@ -29,26 +37,33 @@ export async function getDiffInPullRequest(
   headRef: string,
   destination?: string
 ) {
+  const safeBaseRef = sanitizeRef(baseRef);
+  const safeHeadRef = sanitizeRef(headRef);
+
   if (destination) {
-    execSync(`git remote add -f destination ${destination} 2>&1`);
-    execSync(`git remote update 2>&1`);
+    execFileSync("git", ["remote", "add", "-f", "destination", destination], {
+      stdio: "pipe",
+    });
+    execFileSync("git", ["remote", "update"], { stdio: "pipe" });
   }
 
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
    */
-  execSync(
-    `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
-  );
+  const diffOutput = execFileSync("git", [
+    "diff",
+    `destination/${safeBaseRef}...origin/${safeHeadRef}`,
+  ]);
+  fs.writeFileSync(DIFF_OUTPUT, diffOutput);
 
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToChangedLines = new Map<string, Set<number>>();
-  for (let file of files) {
+  for (const file of files) {
     if (file.to && file.to !== "/dev/null") {
       const changedLines = new Set<number>();
-      for (let chunk of file.chunks) {
-        for (let change of chunk.changes) {
+      for (const chunk of file.chunks) {
+        for (const change of chunk.changes) {
           if (change.type === "add" || change.type === "del") {
             changedLines.add(change.ln);
           }
