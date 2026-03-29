@@ -285,7 +285,7 @@ export default class SfScannerPullRequest {
     let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
     this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
     try {
-      this.reporter.write();
+      await this.reporter.write();
     } catch (e) {
       console.error(JSON.stringify(e, null, 2));
       setFailed("An error occurred while trying to write to GitHub");

@@ -54,7 +54,7 @@ export abstract class BaseReporter<T> implements Reporter {
     this.inputs = inputs;
   }
 
-  write(): void {
+  async write(): Promise<void> {
     throw new Error("Method not implemented.");
   }
 

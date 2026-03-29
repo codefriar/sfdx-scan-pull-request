@@ -78,7 +78,7 @@ export type ReporterProps = {
 };
 
 export interface Reporter {
-  write(): void;
+  write(): Promise<void>;
   translateViolationToReport(
     filePath: string,
     violation: ScannerViolation,
