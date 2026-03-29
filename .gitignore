@@ -4,3 +4,7 @@ coverage
 .sfdx
 .sf
 *-diagnosis.json
+
+# Compiled test artifacts
+tests/*.js
+tests/*.js.map

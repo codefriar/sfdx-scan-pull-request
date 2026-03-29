@@ -3,7 +3,7 @@
   "clearMocks": true,
   "moduleFileExtensions": ["js", "ts"],
   "moduleNameMapper": {
-    "@oclif/core/lib/errors/logger": "<rootDir>/node_modules/sfdx-cli/node_modules/@oclif/core/lib/errors/logger"
+    "^(\\.{1,2}/.*)\\.js$": "$1"
   },
   "testMatch": [
     "**/tests/**/*.(spec|test).[jt]s?(x)",
