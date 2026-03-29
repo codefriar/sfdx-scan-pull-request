@@ -64163,26 +64163,41 @@ const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(
 
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 /**
+ * @description Sanitizes a string for use as a git ref by removing
+ * characters that could be used for shell injection.
+ */
+function sanitizeRef(ref) {
+    return ref.replace(/[^a-zA-Z0-9_./-]/g, "");
+}
+/**
  * @description Calculates the diff for all files within the pull request and
  * populates a map of filePath -> Set of changed line numbers
  */
 async function getDiffInPullRequest(baseRef, headRef, destination) {
+    const safeBaseRef = sanitizeRef(baseRef);
+    const safeHeadRef = sanitizeRef(headRef);
     if (destination) {
-        (0,external_child_process_namespaceObject.execSync)(`git remote add -f destination ${destination} 2>&1`);
-        (0,external_child_process_namespaceObject.execSync)(`git remote update 2>&1`);
+        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "add", "-f", "destination", destination], {
+            stdio: "pipe",
+        });
+        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "update"], { stdio: "pipe" });
     }
     /**
      * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
      * called from within action. Writing to file, then reading avoids this error.
      */
-    (0,external_child_process_namespaceObject.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
+    const diffOutput = (0,external_child_process_namespaceObject.execFileSync)("git", [
+        "diff",
+        `destination/${safeBaseRef}...origin/${safeHeadRef}`,
+    ]);
+    external_fs_.writeFileSync(DIFF_OUTPUT, diffOutput);
     const files = parse_diff(external_fs_.readFileSync(DIFF_OUTPUT).toString());
     const filePathToChangedLines = new Map();
-    for (let file of files) {
+    for (const file of files) {
         if (file.to && file.to !== "/dev/null") {
             const changedLines = new Set();
-            for (let chunk of file.chunks) {
-                for (let change of chunk.changes) {
+            for (const chunk of file.chunks) {
+                for (const change of chunk.changes) {
                     if (change.type === "add" || change.type === "del") {
                         changedLines.add(change.ln);
                     }
@@ -64194,8 +64209,6 @@ async function getDiffInPullRequest(baseRef, headRef, destination) {
     return filePathToChangedLines;
 }
 //# sourceMappingURL=git-actions.js.map
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(1017);
 ;// CONCATENATED MODULE: ./lib/common.js
 
 function fileExists(filePath) {
@@ -64214,14 +64227,10 @@ function getScannerViolationType(inputs, violation, engine) {
     if (!inputs.strictlyEnforcedRules) {
         return "Warning";
     }
-    let violationDetail = {
-        engine: engine,
-        category: violation.category,
-        rule: violation.ruleName,
-    };
-    for (let enforcedRule of JSON.parse(inputs.strictlyEnforcedRules)) {
-        if (Object.entries(violationDetail).toString() ===
-            Object.entries(enforcedRule).toString()) {
+    for (const enforcedRule of JSON.parse(inputs.strictlyEnforcedRules)) {
+        if (enforcedRule.engine === engine &&
+            enforcedRule.category === violation.category &&
+            enforcedRule.rule === violation.ruleName) {
             return "Error";
         }
     }
@@ -64231,6 +64240,52 @@ function getGithubFilePath(commitId, filePath) {
     return ["..", "tree", commitId, filePath].join("/");
 }
 //# sourceMappingURL=common.js.map
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(1017);
+;// CONCATENATED MODULE: ./lib/sarif-parser.js
+
+/**
+ * @description Parses a SARIF document into an array of ScannerFindings.
+ * Pure function with no side effects.
+ * @param sarifJson The parsed SARIF document
+ * @returns Array of scanner findings grouped by engine and file
+ */
+function parseSarifToFindings(sarifJson) {
+    const findings = [];
+    for (const run of sarifJson.runs) {
+        const rules = new Map(run.tool.driver.rules.map((rule) => [rule.id, rule]));
+        const engine = run.tool.driver.name;
+        const fileViolations = new Map();
+        for (const result of run.results) {
+            const rule = rules.get(result.ruleId);
+            const location = result.locations[0].physicalLocation;
+            const fileName = external_path_.normalize(location.artifactLocation.uri);
+            const violation = {
+                category: rule?.properties.category || "",
+                column: location.region.startColumn.toString(),
+                endColumn: location.region.endColumn?.toString() || "",
+                endLine: location.region.endLine?.toString() || "",
+                line: location.region.startLine.toString(),
+                message: result.message.text,
+                ruleName: result.ruleId,
+                severity: rule?.properties.severity || 0,
+                url: rule?.helpUri,
+            };
+            const existing = fileViolations.get(fileName);
+            if (existing) {
+                existing.push(violation);
+            }
+            else {
+                fileViolations.set(fileName, [violation]);
+            }
+        }
+        for (const [fileName, violations] of fileViolations) {
+            findings.push({ fileName, engine, violations });
+        }
+    }
+    return findings;
+}
+//# sourceMappingURL=sarif-parser.js.map
 ;// CONCATENATED MODULE: ./lib/sfdxCli.js
 /*
    Copyright 2022 Mitch Spano
@@ -64272,43 +64327,7 @@ class SfCLI {
         }
         const sarifContent = external_fs_.readFileSync(this.scannerFlags.outfile, "utf-8");
         const sarifJson = JSON.parse(sarifContent);
-        const findings = [];
-        sarifJson.runs.forEach((run) => {
-            const rules = new Map(run.tool.driver.rules.map((rule) => [rule.id, rule]));
-            const engine = run.tool.driver.name;
-            const fileViolations = new Map();
-            run.results.forEach((result) => {
-                const rule = rules.get(result.ruleId);
-                const location = result.locations[0].physicalLocation;
-                const fileName = external_path_.normalize(location.artifactLocation.uri);
-                const violation = {
-                    category: rule?.properties.category || "",
-                    column: location.region.startColumn.toString(),
-                    endColumn: location.region.endColumn?.toString() || "",
-                    endLine: location.region.endLine?.toString() || "",
-                    line: location.region.startLine.toString(),
-                    message: result.message.text,
-                    ruleName: result.ruleId,
-                    severity: rule?.properties.severity || 0,
-                    url: rule?.helpUri,
-                };
-                if (fileViolations.has(fileName)) {
-                    fileViolations.get(fileName).push(violation);
-                }
-                else {
-                    fileViolations.set(fileName, [violation]);
-                }
-            });
-            fileViolations.forEach((violations, fileName) => {
-                const finding = {
-                    fileName,
-                    engine,
-                    violations,
-                };
-                findings.push(finding);
-            });
-        });
-        return findings;
+        return parseSarifToFindings(sarifJson);
     }
     /**
      * @description Executes a sfdx command on the command line
@@ -64316,18 +64335,11 @@ class SfCLI {
      * @param cliArgs an array of strings to pass as arguments to the command
      */
     async cli(commandName, cliArgs = []) {
-        let result = null;
-        try {
-            const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-            const jsonPayload = (0,external_child_process_namespaceObject.execSync)(cliCommand, {
-                maxBuffer: 10485760,
-            }).toString();
-            result = JSON.parse(jsonPayload).result;
-        }
-        catch (err) {
-            throw err;
-        }
-        return result;
+        const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
+        const jsonPayload = (0,external_child_process_namespaceObject.execSync)(cliCommand, {
+            maxBuffer: 10485760,
+        }).toString();
+        return JSON.parse(jsonPayload).result;
     }
     /**
      * @description uses the sf scanner to generate a .sarif file containing the scan results.
@@ -64341,13 +64353,8 @@ class SfCLI {
             ? [`--${key}`, this.scannerFlags[key]]
             : [])
             .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-        try {
-            console.log("Executing Sf scanner on the command line");
-            return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
-        }
-        catch (err) {
-            throw err;
-        }
+        console.log("Executing Sf scanner on the command line");
+        return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
     }
     /**
      * @description Registers a new rule with the scanner
@@ -68199,7 +68206,7 @@ class BaseReporter {
         this.context = context;
         this.inputs = inputs;
     }
-    write() {
+    async write() {
         throw new Error("Method not implemented.");
     }
     translateViolationToReport(_filePath, _violation, _engine) {
@@ -68352,17 +68359,16 @@ class CommentsReporter extends BaseReporter {
         // This gets any comments that have our hidden comment prefix
         const existingComments = await this.getExistingComments();
         this.logger(`Found ${existingComments.length} existing comments with the hidden comment prefix indicating the Scanner as the author.`);
+        // Fetch resolved review comment threads ONCE
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // This returns the difference between all issues and existing comments.
         // The idea is that we'll discover here the issues that need net-new comments to be written.
-        const netNewIssues = await this.filterOutExistingComments(existingComments);
+        const netNewIssues = this.filterOutExistingComments(existingComments, resolvedComments);
         this.logger(`Found ${netNewIssues.length} new issues that do not have an existing comment or a resolved comment thread.`);
         // moving this up the stack to enable deleting resolved comments before trying to write new ones
         if (this.inputs.deleteResolvedComments) {
             await this.deleteResolvedComments(this.issues, existingComments);
         }
-        // If there are no new comments to write, then we'll just log a message and return.
-        // Fetch resolved review comment threads
-        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // Identify unresolved existing comments
         const unresolvedExistingComments = existingComments.filter((existingComment) => !resolvedComments.find((resolvedComment) => this.matchComment(existingComment, resolvedComment)));
         this.logger(`Found ${unresolvedExistingComments.length} unresolved existing comments.`);
@@ -68395,14 +68401,10 @@ class CommentsReporter extends BaseReporter {
      * @param existingComments
      * @private
      */
-    async filterOutExistingComments(existingComments) {
-        // iterate over the issues and filter out any that do not have existing comments
-        // pull the Pull Request review threads that are resolved for this PR
-        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
+    filterOutExistingComments(existingComments, resolvedComments) {
         const newIssues = this.issues.filter((issue) => {
             return !existingComments.find((existingComment) => this.matchComment(issue, existingComment));
         });
-        // Filter out resolved comments
         return newIssues.filter((issue) => {
             return !resolvedComments.find((resolvedComment) => this.matchComment(issue, resolvedComment));
         });
@@ -68432,18 +68434,18 @@ class CommentsReporter extends BaseReporter {
      *  the hidden comment prefix and if they were generated by a bot
      */
     async getExistingComments() {
-        let result = Array();
         try {
-            // @ts-ignore
-            result = await this.performGithubRequest("GET");
-            result = result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
-                comment.user.type === "Bot");
+            const owner = github.context.repo.owner;
+            const repo = github.context.repo.repo;
+            const prNumber = github.context.payload.pull_request?.number;
+            const endpoint = `GET /repos/${owner}/${repo}/${prNumber ? `pulls/${prNumber}` : `commits/${github.context.sha}`}/comments`;
+            const result = (await this.octokit.paginate(endpoint));
+            return result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) && comment.user.type === "Bot");
         }
         catch (error) {
-            console.error("Error when fetching existing comments: " +
-                JSON.stringify(error, null, 2));
+            console.error("Error when fetching existing comments: " + JSON.stringify(error, null, 2));
+            return [];
         }
-        return result;
     }
     /**
      * @description Compares two comments and determines if they are the same
@@ -68480,9 +68482,6 @@ class CommentsReporter extends BaseReporter {
             endLine++;
         }
         const violationType = getScannerViolationType(this.inputs, violation, engine);
-        // if (violationType === ERROR) {
-        //   this.hasHaltingError = true;
-        // }
         const commit_id = this.context.payload.pull_request
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
@@ -68524,9 +68523,7 @@ class CommentsReporter extends BaseReporter {
     }
 }
 //# sourceMappingURL=comments-reporter.js.map
-// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
-var action_dist_node = __nccwpck_require__(1231);
-;// CONCATENATED MODULE: ./lib/reporter/annoations-reporter.js
+;// CONCATENATED MODULE: ./lib/reporter/annotations-reporter.js
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -68542,7 +68539,6 @@ var action_dist_node = __nccwpck_require__(1231);
 
 
 
-
 const ERROR = "Error";
 const RIGHT = "RIGHT";
 class AnnotationsReporter extends BaseReporter {
@@ -68552,11 +68548,10 @@ class AnnotationsReporter extends BaseReporter {
      * @private
      */
     performGithubRequest(body) {
-        const octokit = new action_dist_node.Octokit();
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const endpoint = `POST /repos/${owner}/${repo}/check-runs`;
-        return octokit.request(endpoint, body);
+        return this.octokit.request(endpoint, body);
     }
     /**
      * @description Writes the Check Run to GitHub
@@ -68624,15 +68619,28 @@ class AnnotationsReporter extends BaseReporter {
         });
     }
 }
-//# sourceMappingURL=annoations-reporter.js.map
-;// CONCATENATED MODULE: external "node:child_process"
-const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
+//# sourceMappingURL=annotations-reporter.js.map
+// EXTERNAL MODULE: external "zlib"
+var external_zlib_ = __nccwpck_require__(9796);
+// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
+var action_dist_node = __nccwpck_require__(1231);
 ;// CONCATENATED MODULE: ./lib/SarifUploader.js
 
 
 
 
 
+
+/**
+ * @description Compresses content with gzip and encodes to base64.
+ * Uses Node.js built-in APIs instead of shell commands for portability.
+ * @param content The string content to compress and encode
+ * @returns Base64-encoded gzipped content
+ */
+function compressAndEncode(content) {
+    const compressed = (0,external_zlib_.gzipSync)(Buffer.from(content, "utf-8"));
+    return compressed.toString("base64");
+}
 /**
  * @description This class is responsible for uploading the SARIF report to the GitHub code scanning API.
  */
@@ -68644,16 +68652,17 @@ class SarifUploader {
         this.octokit = new action_dist_node.Octokit();
     }
     /**
-     * @description Uploads the SARIF report generated by other methods to the GitHub code scanning API.
+     * @description Uploads the SARIF report to the GitHub code scanning API.
      */
     async uploadSarifFileToCodeQL() {
         console.log("Uploading SARIF report ...");
         try {
-            let base64Data = await this.execShellCmds(this.sarifPath);
             const pullRequestNumber = github.context.payload.pull_request?.number;
             const ref = `refs/pull/${pullRequestNumber}/head`;
-            const toolName = "SfScaner";
+            const toolName = "SfScanner";
             if (pullRequestNumber && fileExists(this.sarifPath)) {
+                const sarifContent = external_fs_.readFileSync(this.sarifPath, "utf-8");
+                const base64Data = compressAndEncode(sarifContent);
                 await this.octokit.codeScanning.uploadSarif({
                     owner: github.context.repo.owner,
                     repo: github.context.repo.repo,
@@ -68671,35 +68680,6 @@ class SarifUploader {
         catch (error) {
             core.setFailed(`Failed to upload SARIF report: ${error.message}`);
         }
-    }
-    /**
-     * @description Executes the gzip and base64 commands to compress and encode the SARIF report.
-     * @param sarifPath path to the SARIF report.
-     */
-    async execShellCmds(sarifPath) {
-        return new Promise((resolve, reject) => {
-            const gzipCommand = (0,external_node_child_process_namespaceObject.spawn)("gzip", ["-c", sarifPath]);
-            const base64Command = (0,external_node_child_process_namespaceObject.spawn)("base64", ["-w0"]);
-            gzipCommand.stdout.pipe(base64Command.stdin);
-            let base64Output = "";
-            base64Command.stdout.on("data", (data) => {
-                base64Output += data.toString();
-            });
-            base64Command.on("close", (code) => {
-                if (code === 0) {
-                    resolve(base64Output);
-                }
-                else {
-                    reject(new Error(`Command execution failed with code ${code}`));
-                }
-            });
-            gzipCommand.on("error", (error) => {
-                reject(error);
-            });
-            base64Command.on("error", (error) => {
-                reject(error);
-            });
-        });
     }
 }
 //# sourceMappingURL=SarifUploader.js.map
@@ -68778,7 +68758,7 @@ class SfScannerPullRequest {
          * They are defined as configurable in the action.yml file.
          */
         this.inputs = {
-            reportMode: (0,core.getInput)("report-mode") || "check-runs",
+            reportMode: ((0,core.getInput)("report-mode") || "check-runs"),
             customPmdRules: (0,core.getInput)("custom-pmd-rules"),
             maxNumberOfComments: parseInt((0,core.getInput)("max-number-of-comments")) || 100, // default of 100 comments
             rateLimitWaitTime: parseInt((0,core.getInput)("rate-limit-wait-time")) || 60000, // default of 1 minute
@@ -68820,7 +68800,7 @@ class SfScannerPullRequest {
         return normalizedThreshold;
     }
     /**
-     * @desscription validates that the execution context is a pull request, and that we have a valid target reference
+     * @description validates that the execution context is a pull request, and that we have a valid target reference
      * @param pullRequest
      * @param target
      */
@@ -68954,7 +68934,7 @@ class SfScannerPullRequest {
         let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
         this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
         try {
-            this.reporter.write();
+            await this.reporter.write();
         }
         catch (e) {
             console.error(JSON.stringify(e, null, 2));
