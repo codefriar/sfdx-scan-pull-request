@@ -1,0 +1,7 @@
+// DO NOT EDIT: This file is managed by Illuminated Cloud. Any external changes will be discarded.
+
+Copyright 2024 Salesforce, Inc. All rights reserved. Salesforce grants you a worldwide, non-exclusive, no-charge, royalty-free copyright license to use these TypeScript type definitions. Subject to the limited rights expressly granted hereunder, Salesforce reserves all rights, title, and interest in and to all intellectual property subsisting in the TypeScript type definitions. No rights are granted to you hereunder other than as expressly set forth herein. 
+
+You agree that you will not attempt to gain unauthorized access to, disassemble, reverse engineer, or decompile, a TypeScript type definition, or access a TypeScript type definition to (1) build a competitive product or service, or (2) copy any ideas, features, functions or graphics.
+ 
+The TypeScript type definitions may contain bugs, errors, and incompatibilities and are made available on an AS IS basis without support, updates, service level commitments, or warranty of any kind (express or implied). Salesforce reserves the right at any time to modify, suspend, or discontinue the TypeScript type definitions (or any part thereof) with or without notice. You agree that Salesforce shall not be liable for any modification, suspension, or discontinuance and that, in no event, shall Salesforce have any liability for any damages.

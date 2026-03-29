@@ -1,0 +1,24 @@
+// DO NOT EDIT: This file is managed by Illuminated Cloud. Any external changes will be discarded.
+{
+  "include": [
+    "../../**/lwc/**/*.js",
+    "../../**/lwc/**/*.ts",
+    "types/**/*.d.ts"
+  ],
+  "exclude": [
+    "../../.sfdx/**/*.d.ts"
+  ],
+  "compilerOptions": {
+    "allowJs": true,
+    "checkJs": true,
+    "skipLibCheck": true,
+    "experimentalDecorators": true,
+    "allowSyntheticDefaultImports": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "target": "ESNext",
+    "module": "NodeNext",
+    "baseUrl": "../..",
+    "paths": {}
+  }
+}
