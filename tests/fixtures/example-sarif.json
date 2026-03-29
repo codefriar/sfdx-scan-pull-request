@@ -1,0 +1,53 @@
+{
+  "version": "2.1.0",
+  "runs": [
+    {
+      "tool": {
+        "driver": {
+          "name": "pmd",
+          "rules": [
+            {
+              "id": "ApexUnitTestClassShouldHaveAsserts",
+              "shortDescription": { "text": "Test classes should have asserts" },
+              "helpUri": "https://pmd.github.io/pmd/pmd_rules_apex_bestpractices.html#apexunittestclassshouldhaveasserts",
+              "properties": { "category": "Best Practices", "severity": 2 }
+            },
+            {
+              "id": "AvoidGlobalModifier",
+              "shortDescription": { "text": "Avoid global modifier" },
+              "helpUri": "https://pmd.github.io/pmd/pmd_rules_apex_bestpractices.html#avoidglobalmodifier",
+              "properties": { "category": "Best Practices", "severity": 3 }
+            }
+          ]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "ApexUnitTestClassShouldHaveAsserts",
+          "message": { "text": "Test class should have asserts" },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "force-app/main/default/classes/MyTest.cls" }, "region": { "startLine": 5, "startColumn": 1, "endLine": 10, "endColumn": 2 } } }]
+        },
+        {
+          "ruleId": "AvoidGlobalModifier",
+          "message": { "text": "Avoid using global modifier" },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "force-app/main/default/classes/MyClass.cls" }, "region": { "startLine": 1, "startColumn": 1 } } }]
+        }
+      ]
+    },
+    {
+      "tool": {
+        "driver": {
+          "name": "eslint",
+          "rules": [{ "id": "no-unused-vars", "shortDescription": { "text": "Disallow unused variables" }, "helpUri": "https://eslint.org/docs/rules/no-unused-vars", "properties": { "category": "Variables", "severity": 1 } }]
+        }
+      },
+      "results": [
+        {
+          "ruleId": "no-unused-vars",
+          "message": { "text": "'x' is defined but never used" },
+          "locations": [{ "physicalLocation": { "artifactLocation": { "uri": "force-app/main/default/lwc/myComp/myComp.js" }, "region": { "startLine": 3, "startColumn": 7, "endLine": 3, "endColumn": 8 } } }]
+        }
+      ]
+    }
+  ]
+}

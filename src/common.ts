@@ -10,7 +10,7 @@ export type PluginInputs = {
   rateLimitWaitTime: number;
   rateLimitRetries: number;
   deleteResolvedComments: boolean;
-  reportMode: string | "comments" | "check-runs";
+  reportMode: "comments" | "check-runs";
   target: string;
   runFlowScanner: boolean;
   debug: boolean;
@@ -37,17 +37,15 @@ export function getScannerViolationType(
   if (!inputs.strictlyEnforcedRules) {
     return "Warning";
   }
-  let violationDetail = {
-    engine: engine,
-    category: violation.category,
-    rule: violation.ruleName,
-  };
-  for (let enforcedRule of JSON.parse(inputs.strictlyEnforcedRules) as {
-    [key in string]: string;
+  for (const enforcedRule of JSON.parse(inputs.strictlyEnforcedRules) as {
+    engine: string;
+    category: string;
+    rule: string;
   }[]) {
     if (
-      Object.entries(violationDetail).toString() ===
-      Object.entries(enforcedRule).toString()
+      enforcedRule.engine === engine &&
+      enforcedRule.category === violation.category &&
+      enforcedRule.rule === violation.ruleName
     ) {
       return "Error";
     }

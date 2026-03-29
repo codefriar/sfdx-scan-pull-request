@@ -10,7 +10,7 @@ import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
 import { context } from "@actions/github";
 import { CommentsReporter } from "./reporter/comments-reporter.js";
-import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
+import { AnnotationsReporter } from "./reporter/annotations-reporter.js";
 import { ExecSyncError } from "./index.types.js";
 import SarifUploader from "./SarifUploader.js";
 import { getRequiredEngines } from "./engine-selection.js";
@@ -48,7 +48,7 @@ export default class SfScannerPullRequest {
      * They are defined as configurable in the action.yml file.
      */
     this.inputs = {
-      reportMode: getInput("report-mode") || "check-runs",
+      reportMode: (getInput("report-mode") || "check-runs") as "comments" | "check-runs",
       customPmdRules: getInput("custom-pmd-rules"),
       maxNumberOfComments: parseInt(getInput("max-number-of-comments")) || 100, // default of 100 comments
       rateLimitWaitTime: parseInt(getInput("rate-limit-wait-time")) || 60000, // default of 1 minute
@@ -99,7 +99,7 @@ export default class SfScannerPullRequest {
   }
 
   /**
-   * @desscription validates that the execution context is a pull request, and that we have a valid target reference
+   * @description validates that the execution context is a pull request, and that we have a valid target reference
    * @param pullRequest
    * @param target
    */
@@ -204,7 +204,7 @@ export default class SfScannerPullRequest {
    */
   private getFilesToScan(
     filePathToChangedLines: Map<string, Set<number>>,
-    target: String
+    target: string
   ) {
     if (target) {
       return [target];
@@ -285,7 +285,7 @@ export default class SfScannerPullRequest {
     let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
     this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
     try {
-      this.reporter.write();
+      await this.reporter.write();
     } catch (e) {
       console.error(JSON.stringify(e, null, 2));
       setFailed("An error occurred while trying to write to GitHub");

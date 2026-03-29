@@ -12,7 +12,6 @@
  */
 
 import { getScannerViolationType } from "../common.js";
-import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
 import { GithubAnnotation, GithubCheckRun } from "./reporter.types.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
@@ -28,13 +27,10 @@ export class AnnotationsReporter extends BaseReporter<GithubAnnotation> {
    * @private
    */
   private performGithubRequest<T>(body: GithubCheckRun) {
-    const octokit = new Octokit();
     const owner = context.repo.owner;
     const repo = context.repo.repo;
-
     const endpoint = `POST /repos/${owner}/${repo}/check-runs`;
-
-    return octokit.request(endpoint, body) as Promise<T>;
+    return this.octokit.request(endpoint, body) as Promise<T>;
   }
 
   /**
