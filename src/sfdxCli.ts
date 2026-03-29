@@ -13,12 +13,11 @@
 
 import { execSync } from "child_process";
 import fs from "fs";
-import * as path from "path";
 import { fileExists } from "./common.js";
+import { parseSarifToFindings } from "./sarif-parser.js";
 import {
   ScannerFinding,
   ScannerFlags,
-  ScannerViolation,
   SfdxCommandResult,
 } from "./sfdxCli.types.js";
 import { SarifDocument } from "./sarif.types.js";
@@ -42,57 +41,14 @@ export default class SfCLI {
    * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
    * the findings in a format that can be easily consumed by the reporter.
    */
-  async getFindingsForFiles() {
+  async getFindingsForFiles(): Promise<ScannerFinding[]> {
     await this.generateSarifOutputFile();
     if (!fileExists(this.scannerFlags.outfile)) {
       throw new Error("SARIF output file not found");
     }
     const sarifContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
     const sarifJson: SarifDocument = JSON.parse(sarifContent) as SarifDocument;
-
-    const findings: ScannerFinding[] = [];
-    sarifJson.runs.forEach((run) => {
-      const rules = new Map(
-        run.tool.driver.rules.map((rule) => [rule.id, rule])
-      );
-      const engine = run.tool.driver.name;
-
-      const fileViolations = new Map<string, ScannerViolation[]>();
-      run.results.forEach((result) => {
-        const rule = rules.get(result.ruleId);
-        const location = result.locations[0].physicalLocation;
-        const fileName = path.normalize(location.artifactLocation.uri);
-
-        const violation: ScannerViolation = {
-          category: rule?.properties.category || "",
-          column: location.region.startColumn.toString(),
-          endColumn: location.region.endColumn?.toString() || "",
-          endLine: location.region.endLine?.toString() || "",
-          line: location.region.startLine.toString(),
-          message: result.message.text,
-          ruleName: result.ruleId,
-          severity: rule?.properties.severity || 0,
-          url: rule?.helpUri,
-        };
-
-        if (fileViolations.has(fileName)) {
-          fileViolations.get(fileName)!.push(violation);
-        } else {
-          fileViolations.set(fileName, [violation]);
-        }
-      });
-
-      fileViolations.forEach((violations, fileName) => {
-        const finding: ScannerFinding = {
-          fileName,
-          engine,
-          violations,
-        };
-
-        findings.push(finding);
-      });
-    });
-    return findings;
+    return parseSarifToFindings(sarifJson);
   }
 
   /**
@@ -101,17 +57,11 @@ export default class SfCLI {
    * @param cliArgs an array of strings to pass as arguments to the command
    */
   private async cli<T>(commandName: string, cliArgs: string[] = []) {
-    let result = null as T;
-    try {
-      const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-      const jsonPayload = execSync(cliCommand, {
-        maxBuffer: 10485760,
-      }).toString();
-      result = (JSON.parse(jsonPayload) as SfdxCommandResult<T>).result;
-    } catch (err) {
-      throw err;
-    }
-    return result;
+    const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
+    const jsonPayload = execSync(cliCommand, {
+      maxBuffer: 10485760,
+    }).toString();
+    return (JSON.parse(jsonPayload) as SfdxCommandResult<T>).result;
   }
 
   /**
@@ -130,12 +80,8 @@ export default class SfCLI {
           : []
       )
       .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-    try {
-      console.log("Executing Sf scanner on the command line");
-      return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
-    } catch (err) {
-      throw err;
-    }
+    console.log("Executing Sf scanner on the command line");
+    return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
   }
 
   /**

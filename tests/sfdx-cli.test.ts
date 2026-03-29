@@ -1,11 +1,16 @@
-import { expect, it, describe } from "@jest/globals";
+import { expect, it, describe, beforeEach } from "@jest/globals";
 import { execSync } from "child_process";
-import SfCLI from "../src/sfdxCli.ts";
-import { ScannerFlags, ScannerViolation } from "../src/sfdxCli.types.ts";
-
-const thirtySecondsRunTime = 1000 * 30;
+import fs from "fs";
+import path from "path";
+import SfCLI from "../src/sfdxCli";
+import { ScannerFlags } from "../src/sfdxCli.types";
 
 jest.mock("child_process");
+jest.mock("fs");
+
+const fixturePath = path.join(__dirname, "fixtures", "example-sarif.json");
+const realFs = jest.requireActual("fs") as typeof fs;
+const sarifFixture = realFs.readFileSync(fixturePath, "utf-8");
 
 describe("SfCLI", () => {
   let sfCLI: SfCLI;
@@ -16,7 +21,7 @@ describe("SfCLI", () => {
       engine: "pmd",
       pmdconfig: undefined,
       target: "tests/ExampleClass.cls",
-      format: "json",
+      format: "sarif",
       outfile: "sfdx-scan.sarif",
     };
     sfCLI = new SfCLI(scannerFlags);
@@ -24,96 +29,48 @@ describe("SfCLI", () => {
   });
 
   describe("getFindingsForFiles", () => {
-    it("should return findings for files", async () => {
-      const violation: ScannerViolation = {
-        category: "Code Style",
-        column: "1",
-        endColumn: "1",
-        endLine: "1",
-        line: "1",
-        message: "Test violation",
-        ruleName: "TestRule",
-        severity: 1,
-        url: "https://example.com",
-      };
-
-      (execSync as jest.Mock).mockReturnValue(
-        JSON.stringify({ result: violation })
-      );
+    it("should parse SARIF file and return findings", async () => {
+      (execSync as jest.Mock).mockReturnValue(JSON.stringify({ result: null }));
+      (fs.accessSync as jest.Mock).mockReturnValue(undefined);
+      (fs.readFileSync as jest.Mock).mockReturnValue(sarifFixture);
 
       const result = await sfCLI.getFindingsForFiles();
-
-      expect(result).toEqual(violation);
+      expect(result).toHaveLength(3);
+      expect(result[0].engine).toBe("pmd");
+      expect(result[0].violations.length).toBeGreaterThan(0);
     });
 
-    it("should handle errors when getting findings for files", async () => {
-      const error = new Error("Test error");
-      (execSync as jest.Mock).mockImplementation(() => {
-        throw error;
-      });
+    it("should throw when SARIF output file not found", async () => {
+      (execSync as jest.Mock).mockReturnValue(JSON.stringify({ result: null }));
+      (fs.accessSync as jest.Mock).mockImplementation(() => { throw new Error("ENOENT"); });
+
+      await expect(sfCLI.getFindingsForFiles()).rejects.toThrow("SARIF output file not found");
+    });
+
+    it("should throw when CLI execution fails", async () => {
+      const error = new Error("Scanner crashed");
+      (execSync as jest.Mock).mockImplementation(() => { throw error; });
 
       await expect(sfCLI.getFindingsForFiles()).rejects.toThrow(error);
     });
   });
 
-  describe("cli", () => {
-    it("should execute a sfdx command on the command line", async () => {
-      const mockResult: ScannerViolation = {
-        category: "Code Style",
-        column: "1",
-        endColumn: "1",
-        endLine: "1",
-        line: "1",
-        message: "Test violation",
-        ruleName: "TestRule",
-        severity: 1,
-        url: "https://example.com",
-      };
-
-      (execSync as jest.Mock).mockReturnValue(
-        JSON.stringify({ result: mockResult })
-      );
-
-      // @ts-ignore
-      const result = await sfCLI.cli("scanner run");
-
-      expect(result).toEqual(mockResult);
-    });
-
-    it("should handle errors when executing a sfdx command", async () => {
-      const error = new Error("Test error");
-      (execSync as jest.Mock).mockImplementation(() => {
-        throw error;
-      });
-
-      await expect(sfCLI.cli("scanner run")).rejects.toThrow(error);
-    });
-  });
-
   describe("registerRule", () => {
-    it("should register a new rule with the scanner", async () => {
-      const mockResult = {
-        // populate with mock data
-      };
+    it("should call sf scanner rule add with correct args", async () => {
+      (execSync as jest.Mock).mockReturnValue(JSON.stringify({ result: "Rule added" }));
 
-      (execSync as jest.Mock).mockReturnValue(
-        JSON.stringify({ result: mockResult })
+      const result = await sfCLI.registerRule("/path/to/rule.jar", "apex");
+      expect(execSync).toHaveBeenCalledWith(
+        expect.stringContaining('scanner rule add --path="/path/to/rule.jar" --language="apex" --json'),
+        expect.anything()
       );
-
-      const result = await sfCLI.registerRule("path", "language");
-
-      expect(result).toEqual(mockResult);
+      expect(result).toBe("Rule added");
     });
 
-    it("should handle errors when registering a new rule", async () => {
-      const error = new Error("Test error");
-      (execSync as jest.Mock).mockImplementation(() => {
-        throw error;
-      });
-
-      await expect(sfCLI.registerRule("path", "language")).rejects.toThrow(
-        error
-      );
+    it("should throw when registering rule fails", async () => {
+      const error = new Error("Rule registration failed");
+      (execSync as jest.Mock).mockImplementation(() => { throw error; });
+      await expect(sfCLI.registerRule("path", "language")).rejects.toThrow(error);
     });
   });
 });
