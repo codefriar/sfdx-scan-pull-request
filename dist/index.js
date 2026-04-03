@@ -64166,34 +64166,41 @@ const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
  * @description Calculates the diff for all files within the pull request and
  * populates a map of filePath -> DiffInfo with changed line numbers and hunk info
  */
-async function getDiffInPullRequest(baseRef, headRef, destination) {
+async function getDiffInPullRequest(baseRef, headRef, destination, debug = false) {
     if (destination) {
-        (0,external_child_process_namespaceObject.execSync)(`git remote add -f destination ${destination} 2>&1`);
-        (0,external_child_process_namespaceObject.execSync)(`git remote update 2>&1`);
+        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "add", "-f", "destination", destination], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
+        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "update"], {
+            stdio: ["ignore", "pipe", "pipe"],
+        });
     }
     /**
      * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
      * called from within action. Writing to file, then reading avoids this error.
      */
-    (0,external_child_process_namespaceObject.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
+    const diffOutput = (0,external_child_process_namespaceObject.execFileSync)("git", ["diff", `destination/${baseRef}...origin/${headRef}`], { maxBuffer: 10485760 });
+    external_fs_.writeFileSync(DIFF_OUTPUT, diffOutput);
     const files = parse_diff(external_fs_.readFileSync(DIFF_OUTPUT).toString());
     const filePathToDiffInfo = new Map();
-    console.log(`DEBUG: Parsing diff for ${files.length} files`);
+    if (debug) {
+        console.log(`DEBUG: Parsing diff for ${files.length} files`);
+    }
     for (let file of files) {
         if (file.to && file.to !== "/dev/null") {
             const changedLines = new Set();
             const lineToHunk = new Map();
             file.chunks.forEach((chunk, hunkIndex) => {
-                console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
                 for (let change of chunk.changes) {
-                    if (change.type === "add" || change.type === "del") {
+                    if (change.type === "add") {
                         changedLines.add(change.ln);
                         lineToHunk.set(change.ln, hunkIndex);
-                        console.log(`DEBUG:   ${change.type} line ${change.ln}`);
                     }
                 }
             });
-            console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+            if (debug) {
+                console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+            }
             filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
         }
     }
@@ -68196,7 +68203,7 @@ const CustomOctokit = Octokit.plugin(paginateRest, throttling, plugin_retry_dist
         },
     },
     authStrategy: auth_action_dist_node.createActionAuth,
-    userAgent: `my-octokit-action/v1.2.3`,
+    userAgent: `sfdx-scan-pull-request/v5`,
 });
 class BaseReporter {
     hasHaltingError;
@@ -68212,11 +68219,14 @@ class BaseReporter {
         this.inputs = inputs;
         this.diffInfo = diffInfo;
     }
-    write() {
+    async write() {
         throw new Error("Method not implemented.");
     }
     translateViolationToReport(_filePath, _violation, _engine) {
         throw new Error("Method not implemented.");
+    }
+    setDiffInfo(diffInfo) {
+        this.diffInfo = diffInfo;
     }
     checkHasHaltingError() {
         if (this.hasHaltingError) {
@@ -68331,15 +68341,6 @@ class CommentsReporter extends BaseReporter {
             event: "REQUEST_CHANGES",
             comments: githubReviewComments,
         };
-        // Write payload to file for debugging
-        try {
-            const fs = require("fs");
-            fs.writeFileSync("pr-review-payload.json", JSON.stringify(jsonBody, null, 2));
-            this.logger("Wrote payload to pr-review-payload.json for inspection");
-        }
-        catch (err) {
-            this.logger(`Failed to write payload file: ${err}`);
-        }
         try {
             this.logger(`Submitting review with ${githubReviewComments.length} comments`);
             await this.octokit.request(`POST ${apiUrl}`, {
@@ -68427,17 +68428,16 @@ class CommentsReporter extends BaseReporter {
         // This gets any comments that have our hidden comment prefix
         const existingComments = await this.getExistingComments();
         this.logger(`Found ${existingComments.length} existing comments with the hidden comment prefix indicating the Scanner as the author.`);
+        // Fetch resolved review comment threads ONCE
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // This returns the difference between all issues and existing comments.
         // The idea is that we'll discover here the issues that need net-new comments to be written.
-        const netNewIssues = await this.filterOutExistingComments(existingComments);
+        const netNewIssues = this.filterOutExistingComments(existingComments, resolvedComments);
         this.logger(`Found ${netNewIssues.length} new issues that do not have an existing comment or a resolved comment thread.`);
         // moving this up the stack to enable deleting resolved comments before trying to write new ones
         if (this.inputs.deleteResolvedComments) {
             await this.deleteResolvedComments(this.issues, existingComments);
         }
-        // If there are no new comments to write, then we'll just log a message and return.
-        // Fetch resolved review comment threads
-        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // Identify unresolved existing comments
         const unresolvedExistingComments = existingComments.filter((existingComment) => !resolvedComments.find((resolvedComment) => this.matchComment(existingComment, resolvedComment)));
         this.logger(`Found ${unresolvedExistingComments.length} unresolved existing comments.`);
@@ -68470,14 +68470,10 @@ class CommentsReporter extends BaseReporter {
      * @param existingComments
      * @private
      */
-    async filterOutExistingComments(existingComments) {
-        // iterate over the issues and filter out any that do not have existing comments
-        // pull the Pull Request review threads that are resolved for this PR
-        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
+    filterOutExistingComments(existingComments, resolvedComments) {
         const newIssues = this.issues.filter((issue) => {
             return !existingComments.find((existingComment) => this.matchComment(issue, existingComment));
         });
-        // Filter out resolved comments
         return newIssues.filter((issue) => {
             return !resolvedComments.find((resolvedComment) => this.matchComment(issue, resolvedComment));
         });
@@ -68507,18 +68503,18 @@ class CommentsReporter extends BaseReporter {
      *  the hidden comment prefix and if they were generated by a bot
      */
     async getExistingComments() {
-        let result = Array();
         try {
-            // @ts-ignore
-            result = await this.performGithubRequest("GET");
-            result = result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
-                comment.user.type === "Bot");
+            const owner = github.context.repo.owner;
+            const repo = github.context.repo.repo;
+            const prNumber = github.context.payload.pull_request?.number;
+            const endpoint = `GET /repos/${owner}/${repo}/${prNumber ? `pulls/${prNumber}` : `commits/${github.context.sha}`}/comments`;
+            const result = (await this.octokit.paginate(endpoint));
+            return result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) && comment.user.type === "Bot");
         }
         catch (error) {
-            console.error("Error when fetching existing comments: " +
-                JSON.stringify(error, null, 2));
+            console.error("Error when fetching existing comments: " + JSON.stringify(error, null, 2));
+            return [];
         }
-        return result;
     }
     /**
      * @description Compares two comments and determines if they are the same
@@ -68553,9 +68549,6 @@ class CommentsReporter extends BaseReporter {
             : parseInt(violation.line);
         this.logger(`Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`);
         const violationType = getScannerViolationType(this.inputs, violation, engine);
-        // if (violationType === ERROR) {
-        //   this.hasHaltingError = true;
-        // }
         const commit_id = this.context.payload.pull_request
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
@@ -68597,9 +68590,7 @@ class CommentsReporter extends BaseReporter {
     }
 }
 //# sourceMappingURL=comments-reporter.js.map
-// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
-var action_dist_node = __nccwpck_require__(1231);
-;// CONCATENATED MODULE: ./lib/reporter/annoations-reporter.js
+;// CONCATENATED MODULE: ./lib/reporter/annotations-reporter.js
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -68615,7 +68606,6 @@ var action_dist_node = __nccwpck_require__(1231);
 
 
 
-
 const ERROR = "Error";
 const RIGHT = "RIGHT";
 class AnnotationsReporter extends BaseReporter {
@@ -68625,11 +68615,10 @@ class AnnotationsReporter extends BaseReporter {
      * @private
      */
     performGithubRequest(body) {
-        const octokit = new action_dist_node.Octokit();
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const endpoint = `POST /repos/${owner}/${repo}/check-runs`;
-        return octokit.request(endpoint, body);
+        return this.octokit.request(endpoint, body);
     }
     /**
      * @description Writes the Check Run to GitHub
@@ -68714,9 +68703,11 @@ class AnnotationsReporter extends BaseReporter {
         });
     }
 }
-//# sourceMappingURL=annoations-reporter.js.map
-;// CONCATENATED MODULE: external "node:child_process"
-const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
+//# sourceMappingURL=annotations-reporter.js.map
+// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
+var action_dist_node = __nccwpck_require__(1231);
+// EXTERNAL MODULE: external "zlib"
+var external_zlib_ = __nccwpck_require__(9796);
 ;// CONCATENATED MODULE: ./lib/SarifUploader.js
 
 
@@ -68747,7 +68738,8 @@ class SarifUploader {
         try {
             // Filter the SARIF file to only include violations in changed lines
             await this.filterSarifFile(filePathToChangedLines);
-            let base64Data = await this.execShellCmds(this.filteredSarifPath);
+            const filteredContent = external_fs_.readFileSync(this.filteredSarifPath, "utf-8");
+            let base64Data = compressAndEncode(filteredContent);
             const pullRequestNumber = github.context.payload.pull_request?.number;
             const ref = `refs/pull/${pullRequestNumber}/head`;
             const toolName = "SfScaner";
@@ -68916,35 +68908,15 @@ class SarifUploader {
         console.log(`│  Total   │${totalStr} │`);
         console.log('└──────────┴───────────┘');
     }
-    /**
-     * @description Executes the gzip and base64 commands to compress and encode the SARIF report.
-     * @param sarifPath path to the SARIF report.
-     */
-    async execShellCmds(sarifPath) {
-        return new Promise((resolve, reject) => {
-            const gzipCommand = (0,external_node_child_process_namespaceObject.spawn)("gzip", ["-c", sarifPath]);
-            const base64Command = (0,external_node_child_process_namespaceObject.spawn)("base64", ["-w0"]);
-            gzipCommand.stdout.pipe(base64Command.stdin);
-            let base64Output = "";
-            base64Command.stdout.on("data", (data) => {
-                base64Output += data.toString();
-            });
-            base64Command.on("close", (code) => {
-                if (code === 0) {
-                    resolve(base64Output);
-                }
-                else {
-                    reject(new Error(`Command execution failed with code ${code}`));
-                }
-            });
-            gzipCommand.on("error", (error) => {
-                reject(error);
-            });
-            base64Command.on("error", (error) => {
-                reject(error);
-            });
-        });
-    }
+}
+/**
+ * @description Compresses content with gzip and encodes it as base64.
+ * Uses Node built-ins instead of shell commands for cross-platform compatibility.
+ * @param content The string content to compress and encode
+ * @returns Base64-encoded gzipped content
+ */
+function compressAndEncode(content) {
+    return (0,external_zlib_.gzipSync)(Buffer.from(content)).toString("base64");
 }
 //# sourceMappingURL=SarifUploader.js.map
 ;// CONCATENATED MODULE: ./lib/SfScannerPullRequest.js
@@ -69037,6 +69009,7 @@ class SfScannerPullRequest {
         console.log("Validating that this action was invoked from an acceptable context...");
         if (!pullRequest) {
             (0,core.setFailed)("This action is only applicable when invoked by a pull request.");
+            throw new Error("This action is only applicable when invoked by a pull request.");
         }
     }
     /**
@@ -69103,15 +69076,13 @@ class SfScannerPullRequest {
     async workflow() {
         console.log("Beginning sf-scanner-pull-request run...");
         // Get the diff to determine which lines changed in which files
-        let filePathToDiffInfo = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
+        let filePathToDiffInfo = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url, this.inputs.debug);
         if (filePathToDiffInfo.size === 0) {
             console.log("There are no changed files - exiting now.");
             return;
         }
         // Set the diffInfo on the reporter so it can validate comments against the diff
-        if (this.reporter instanceof CommentsReporter) {
-            this.reporter.diffInfo = filePathToDiffInfo;
-        }
+        this.reporter.setDiffInfo(filePathToDiffInfo);
         console.log(`Diff contains ${filePathToDiffInfo.size} files with changes`);
         // Run the scanner on all files (config file determines what to scan)
         let allFindings = await this.performStaticCodeAnalysis();

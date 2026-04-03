@@ -38,7 +38,7 @@ const CustomOctokit = Octokit.plugin(
     },
   },
   authStrategy: createActionAuth,
-  userAgent: `my-octokit-action/v1.2.3`,
+  userAgent: `sfdx-scan-pull-request/v5`,
 });
 
 export abstract class BaseReporter<T> implements Reporter {
@@ -67,6 +67,10 @@ export abstract class BaseReporter<T> implements Reporter {
     _engine: string
   ): void {
     throw new Error("Method not implemented.");
+  }
+
+  setDiffInfo(diffInfo: Map<string, DiffInfo>) {
+    this.diffInfo = diffInfo;
   }
 
   checkHasHaltingError() {

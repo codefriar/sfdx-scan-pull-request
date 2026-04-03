@@ -199,13 +199,13 @@ describe("CommentsReporter", () => {
       expect(issues[0].commit_id).toBe("abc123");
     });
 
-    it("should increment endLine when startLine equals endLine", () => {
+    it("should keep endLine equal to startLine when they match", () => {
       const violation = createViolation({ line: "10", endLine: "10" });
       reporter.translateViolationToReport("src/MyClass.cls", violation, "pmd");
 
       const issues = (reporter as any).issues;
       expect(issues[0].start_line).toBe(10);
-      expect(issues[0].line).toBe(11);
+      expect(issues[0].line).toBe(10);
     });
 
     it("should use line as endLine when endLine is empty", () => {
@@ -214,8 +214,8 @@ describe("CommentsReporter", () => {
 
       const issues = (reporter as any).issues;
       expect(issues[0].start_line).toBe(10);
-      // endLine falls back to line (10), then since start === end, it increments to 11
-      expect(issues[0].line).toBe(11);
+      // endLine falls back to line (10)
+      expect(issues[0].line).toBe(10);
     });
 
     it("should set side and start_side to RIGHT", () => {

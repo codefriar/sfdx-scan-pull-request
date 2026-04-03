@@ -153,18 +153,6 @@ export class CommentsReporter extends BaseReporter<GithubComment> {
       comments: githubReviewComments,
     };
 
-    // Write payload to file for debugging
-    try {
-      const fs = require("fs");
-      fs.writeFileSync(
-        "pr-review-payload.json",
-        JSON.stringify(jsonBody, null, 2)
-      );
-      this.logger("Wrote payload to pr-review-payload.json for inspection");
-    } catch (err) {
-      this.logger(`Failed to write payload file: ${err}`);
-    }
-
     try {
       this.logger(`Submitting review with ${githubReviewComments.length} comments`);
       await this.octokit.request(`POST ${apiUrl}`, {
