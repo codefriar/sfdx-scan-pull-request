@@ -1,0 +1,30 @@
+# Salesforce Code Analyzer Configuration
+# This file defines which engines to run and what rules to apply
+
+engines:
+  - name: pmd
+    rules:
+      - category: Best Practices
+      - category: Code Style
+      - category: Design
+      - category: Documentation
+      - category: Error Prone
+      - category: Performance
+      - category: Security
+    
+  - name: eslint
+    config: eslint.config..js
+    
+  - name: eslint-lwc
+
+targets:
+  - "force-app/**/*.cls"
+  - "force-app/**/*.trigger"
+  - "force-app/**/*.js"
+  - "tests/**/*.cls"
+  - "tests/**/*.js"
+
+exclude:
+  - "**/node_modules/**"
+  - "**/__tests__/**"
+

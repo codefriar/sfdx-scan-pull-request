@@ -14,63 +14,66 @@
 import parse from "parse-diff";
 import fs from "fs";
 import { context } from "@actions/github";
-import { execFileSync } from "child_process";
+import { execSync } from "child_process";
 
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 
 export type GithubPullRequest = typeof context.payload.pull_request | undefined;
 
 /**
- * @description Sanitizes a string for use as a git ref by removing
- * characters that could be used for shell injection.
+ * Information about changed lines in a file, including which hunk they belong to
  */
-function sanitizeRef(ref: string): string {
-  return ref.replace(/[^a-zA-Z0-9_./-]/g, "");
-}
+export type DiffInfo = {
+  changedLines: Set<number>;
+  lineToHunk: Map<number, number>; // Maps line number to hunk index
+};
 
 /**
  * @description Calculates the diff for all files within the pull request and
- * populates a map of filePath -> Set of changed line numbers
+ * populates a map of filePath -> DiffInfo with changed line numbers and hunk info
  */
 export async function getDiffInPullRequest(
   baseRef: string,
   headRef: string,
   destination?: string
 ) {
-  const safeBaseRef = sanitizeRef(baseRef);
-  const safeHeadRef = sanitizeRef(headRef);
-
   if (destination) {
-    execFileSync("git", ["remote", "add", "-f", "destination", destination], {
-      stdio: "pipe",
-    });
-    execFileSync("git", ["remote", "update"], { stdio: "pipe" });
+    execSync(`git remote add -f destination ${destination} 2>&1`);
+    execSync(`git remote update 2>&1`);
   }
 
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
    */
-  const diffOutput = execFileSync("git", [
-    "diff",
-    `destination/${safeBaseRef}...origin/${safeHeadRef}`,
-  ]);
-  fs.writeFileSync(DIFF_OUTPUT, diffOutput);
+  execSync(
+    `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
+  );
 
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
-  const filePathToChangedLines = new Map<string, Set<number>>();
-  for (const file of files) {
+  const filePathToDiffInfo = new Map<string, DiffInfo>();
+
+  console.log(`DEBUG: Parsing diff for ${files.length} files`);
+
+  for (let file of files) {
     if (file.to && file.to !== "/dev/null") {
       const changedLines = new Set<number>();
-      for (const chunk of file.chunks) {
-        for (const change of chunk.changes) {
+      const lineToHunk = new Map<number, number>();
+
+      file.chunks.forEach((chunk, hunkIndex) => {
+        console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
+        for (let change of chunk.changes) {
           if (change.type === "add" || change.type === "del") {
             changedLines.add(change.ln);
+            lineToHunk.set(change.ln, hunkIndex);
+            console.log(`DEBUG:   ${change.type} line ${change.ln}`);
           }
         }
-      }
-      filePathToChangedLines.set(file.to, changedLines);
+      });
+
+      console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+      filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
     }
   }
-  return filePathToChangedLines;
+  return filePathToDiffInfo;
 }

@@ -2,6 +2,7 @@ import { PluginInputs } from "../common.js";
 import { ScannerViolation } from "../sfdxCli.types.js";
 import { setFailed } from "@actions/core";
 import { Reporter, ReporterProps } from "./reporter.types.js";
+import { DiffInfo } from "../git-actions.js";
 import { Octokit } from "@octokit/core";
 import { requestLog } from "@octokit/plugin-request-log";
 import { paginateRest } from "@octokit/plugin-paginate-rest";
@@ -45,13 +46,15 @@ export abstract class BaseReporter<T> implements Reporter {
   protected inputs: PluginInputs;
   protected issues: T[];
   protected context;
+  protected diffInfo: Map<string, DiffInfo>;
   protected octokit = new CustomOctokit();
 
-  constructor({ context, inputs }: ReporterProps) {
+  constructor({ context, inputs, diffInfo }: ReporterProps) {
     this.hasHaltingError = false;
     this.issues = [];
     this.context = context;
     this.inputs = inputs;
+    this.diffInfo = diffInfo;
   }
 
   async write(): Promise<void> {

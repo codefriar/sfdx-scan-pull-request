@@ -51,6 +51,25 @@ export class AnnotationsReporter extends BaseReporter<GithubAnnotation> {
       : this.context.sha;
 
     if (this.issues) {
+      const maxAnnotations = 50;
+      const totalIssues = this.issues.length;
+
+      // Sort issues by severity (most severe first - severity 1 is worst, 5 is least)
+      const sortedIssues = [...this.issues].sort((a, b) => {
+        // Extract severity from title like "RuleName (sev: 3)"
+        const getSeverity = (title: string) => {
+          const match = title.match(/\(sev: (\d+)\)/);
+          return match ? parseInt(match[1]) : 999; // Default to high number if not found
+        };
+        return getSeverity(a.title) - getSeverity(b.title); // Ascending order (1 before 5)
+      });
+
+      const limitedIssues = sortedIssues.slice(0, maxAnnotations);
+
+      if (totalIssues > maxAnnotations) {
+        console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, most severe first - severity 1 is worst)`);
+      }
+
       const request: GithubCheckRun = {
         name: "sfdx-scanner",
         head_sha: commit_id,
@@ -58,8 +77,10 @@ export class AnnotationsReporter extends BaseReporter<GithubAnnotation> {
         conclusion: conclusion,
         output: {
           title: "Results from sfdx-scanner",
-          summary: `${this.issues.length} violations found`,
-          annotations: this.issues,
+          summary: totalIssues > maxAnnotations
+            ? `${totalIssues} violations found (showing top ${maxAnnotations} by severity)`
+            : `${totalIssues} violations found`,
+          annotations: limitedIssues,
         },
       };
 
