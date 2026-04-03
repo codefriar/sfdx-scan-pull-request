@@ -10,7 +10,7 @@ import SfCLI from "./sfdxCli.js";
 import { getInput, setFailed } from "@actions/core";
 import { context } from "@actions/github";
 import { CommentsReporter } from "./reporter/comments-reporter.js";
-import { AnnotationsReporter } from "./reporter/annoations-reporter.js";
+import { AnnotationsReporter } from "./reporter/annotations-reporter.js";
 import { ExecSyncError } from "./index.types.js";
 import SarifUploader from "./SarifUploader.js";
 
@@ -113,6 +113,9 @@ export default class SfScannerPullRequest {
       setFailed(
         "This action is only applicable when invoked by a pull request."
       );
+      throw new Error(
+        "This action is only applicable when invoked by a pull request."
+      );
     }
   }
 
@@ -207,7 +210,8 @@ export default class SfScannerPullRequest {
     let filePathToDiffInfo = await getDiffInPullRequest(
       this.pullRequest?.base?.ref,
       this.pullRequest?.head?.ref,
-      this.pullRequest?.base?.repo?.clone_url
+      this.pullRequest?.base?.repo?.clone_url,
+      this.inputs.debug
     );
 
     if (filePathToDiffInfo.size === 0) {
@@ -216,9 +220,7 @@ export default class SfScannerPullRequest {
     }
 
     // Set the diffInfo on the reporter so it can validate comments against the diff
-    if (this.reporter instanceof CommentsReporter) {
-      (this.reporter as any).diffInfo = filePathToDiffInfo;
-    }
+    this.reporter.setDiffInfo(filePathToDiffInfo);
 
     console.log(
       `Diff contains ${filePathToDiffInfo.size} files with changes`

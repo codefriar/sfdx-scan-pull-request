@@ -23,7 +23,7 @@ inputs:
   rate-limit-wait-time:
     description: "Time to wait before retrying after hitting the rate limit"
     default: "60000"
-  rate-limit-retry-count:
+  rate-limit-retries:
     description: "Number of times to retry after hitting the rate limit"
     default: "5"
   comment-batch-size:

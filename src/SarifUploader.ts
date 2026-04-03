@@ -3,8 +3,8 @@ import { ScannerFlags } from "./sfdxCli.types.js";
 import { Octokit } from "@octokit/action";
 import { context } from "@actions/github";
 import { fileExists } from "./common.js";
-import { spawn } from "node:child_process";
 import fs from "fs";
+import { gzipSync } from "zlib";
 import { SarifDocument } from "./sarif.types.js";
 
 /**
@@ -33,7 +33,8 @@ export default class SarifUploader {
       // Filter the SARIF file to only include violations in changed lines
       await this.filterSarifFile(filePathToChangedLines);
 
-      let base64Data = await this.execShellCmds(this.filteredSarifPath);
+      const filteredContent = fs.readFileSync(this.filteredSarifPath, "utf-8");
+      let base64Data = compressAndEncode(filteredContent);
 
       const pullRequestNumber = context.payload.pull_request?.number;
       const ref = `refs/pull/${pullRequestNumber}/head`;
@@ -244,38 +245,14 @@ export default class SarifUploader {
     console.log('└──────────┴───────────┘');
   }
 
-  /**
-   * @description Executes the gzip and base64 commands to compress and encode the SARIF report.
-   * @param sarifPath path to the SARIF report.
-   */
-  private async execShellCmds(sarifPath: string): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const gzipCommand = spawn("gzip", ["-c", sarifPath]);
-      const base64Command = spawn("base64", ["-w0"]);
+}
 
-      gzipCommand.stdout.pipe(base64Command.stdin);
-
-      let base64Output = "";
-
-      base64Command.stdout.on("data", (data) => {
-        base64Output += data.toString();
-      });
-
-      base64Command.on("close", (code) => {
-        if (code === 0) {
-          resolve(base64Output);
-        } else {
-          reject(new Error(`Command execution failed with code ${code}`));
-        }
-      });
-
-      gzipCommand.on("error", (error) => {
-        reject(error);
-      });
-
-      base64Command.on("error", (error) => {
-        reject(error);
-      });
-    });
-  }
+/**
+ * @description Compresses content with gzip and encodes it as base64.
+ * Uses Node built-ins instead of shell commands for cross-platform compatibility.
+ * @param content The string content to compress and encode
+ * @returns Base64-encoded gzipped content
+ */
+export function compressAndEncode(content: string): string {
+  return gzipSync(Buffer.from(content)).toString("base64");
 }

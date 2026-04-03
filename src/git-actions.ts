@@ -14,7 +14,7 @@
 import parse from "parse-diff";
 import fs from "fs";
 import { context } from "@actions/github";
-import { execSync } from "child_process";
+import { execFileSync } from "child_process";
 
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 
@@ -35,25 +35,35 @@ export type DiffInfo = {
 export async function getDiffInPullRequest(
   baseRef: string,
   headRef: string,
-  destination?: string
+  destination?: string,
+  debug: boolean = false
 ) {
   if (destination) {
-    execSync(`git remote add -f destination ${destination} 2>&1`);
-    execSync(`git remote update 2>&1`);
+    execFileSync("git", ["remote", "add", "-f", "destination", destination], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    execFileSync("git", ["remote", "update"], {
+      stdio: ["ignore", "pipe", "pipe"],
+    });
   }
 
   /**
    * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
    * called from within action. Writing to file, then reading avoids this error.
    */
-  execSync(
-    `git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`
+  const diffOutput = execFileSync(
+    "git",
+    ["diff", `destination/${baseRef}...origin/${headRef}`],
+    { maxBuffer: 10485760 }
   );
+  fs.writeFileSync(DIFF_OUTPUT, diffOutput);
 
   const files = parse(fs.readFileSync(DIFF_OUTPUT).toString());
   const filePathToDiffInfo = new Map<string, DiffInfo>();
 
-  console.log(`DEBUG: Parsing diff for ${files.length} files`);
+  if (debug) {
+    console.log(`DEBUG: Parsing diff for ${files.length} files`);
+  }
 
   for (let file of files) {
     if (file.to && file.to !== "/dev/null") {
@@ -61,17 +71,17 @@ export async function getDiffInPullRequest(
       const lineToHunk = new Map<number, number>();
 
       file.chunks.forEach((chunk, hunkIndex) => {
-        console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
         for (let change of chunk.changes) {
-          if (change.type === "add" || change.type === "del") {
+          if (change.type === "add") {
             changedLines.add(change.ln);
             lineToHunk.set(change.ln, hunkIndex);
-            console.log(`DEBUG:   ${change.type} line ${change.ln}`);
           }
         }
       });
 
-      console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+      if (debug) {
+        console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+      }
       filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
     }
   }

@@ -19,7 +19,6 @@ import {
   ScannerFinding,
   ScannerFlags,
   ScannerViolation,
-  SfdxCommandResult,
 } from "./sfdxCli.types.js";
 import { SarifDocument } from "./sarif.types.js";
 

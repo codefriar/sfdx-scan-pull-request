@@ -86,6 +86,7 @@ export interface Reporter {
     violation: ScannerViolation,
     engine: string
   ): void;
+  setDiffInfo(diffInfo: Map<string, DiffInfo>): void;
 }
 
 export type GithubCommentSide = "RIGHT";

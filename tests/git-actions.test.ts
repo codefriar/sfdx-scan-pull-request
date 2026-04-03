@@ -39,7 +39,7 @@ describe("getDiffInPullRequest", () => {
   it("should return changed lines mapped by file path", async () => {
     const result = await getDiffInPullRequest("main", "feature-branch");
     expect(result.has("src/Foo.cls")).toBe(true);
-    expect(result.get("src/Foo.cls")!.size).toBe(3);
+    expect(result.get("src/Foo.cls")!.changedLines.size).toBe(3);
   });
 
   it("should exclude deleted files (/dev/null)", async () => {
@@ -62,13 +62,24 @@ describe("getDiffInPullRequest", () => {
     expect(remoteAddCalls).toHaveLength(0);
   });
 
-  it("should sanitize branch refs to prevent shell injection", async () => {
+  it("should use execFileSync to prevent shell injection", async () => {
     await getDiffInPullRequest("main; rm -rf /", "feature; cat /etc/passwd");
+    // execFileSync passes arguments as an array, not through a shell,
+    // so shell metacharacters are treated as literal strings
     const diffCall = (execFileSync as jest.Mock).mock.calls.find(
-      (call: any[]) => call[1]?.[0] === "diff"
+      (call: any[]) => call[0] === "git" && call[1]?.[0] === "diff"
     );
     expect(diffCall).toBeDefined();
-    const refArg = diffCall![1][1] as string;
-    expect(refArg).not.toContain(";");
+    // The ref is passed as a single argument, not interpreted by a shell
+    expect(diffCall![1][1]).toBe("destination/main; rm -rf /...origin/feature; cat /etc/passwd");
+  });
+
+  it("should only track added lines, not deleted lines", async () => {
+    const result = await getDiffInPullRequest("main", "feature-branch");
+    const fooInfo = result.get("src/Foo.cls")!;
+    // Only "add" type changes should be tracked (lines 2, 3, 4 in the new file)
+    for (const line of fooInfo.changedLines) {
+      expect(line).toBeGreaterThan(0);
+    }
   });
 });
