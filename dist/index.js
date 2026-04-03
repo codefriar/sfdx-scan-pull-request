@@ -64163,52 +64163,45 @@ const external_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(
 
 const DIFF_OUTPUT = "diffBetweenCurrentAndParentBranch.txt";
 /**
- * @description Sanitizes a string for use as a git ref by removing
- * characters that could be used for shell injection.
- */
-function sanitizeRef(ref) {
-    return ref.replace(/[^a-zA-Z0-9_./-]/g, "");
-}
-/**
  * @description Calculates the diff for all files within the pull request and
- * populates a map of filePath -> Set of changed line numbers
+ * populates a map of filePath -> DiffInfo with changed line numbers and hunk info
  */
 async function getDiffInPullRequest(baseRef, headRef, destination) {
-    const safeBaseRef = sanitizeRef(baseRef);
-    const safeHeadRef = sanitizeRef(headRef);
     if (destination) {
-        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "add", "-f", "destination", destination], {
-            stdio: "pipe",
-        });
-        (0,external_child_process_namespaceObject.execFileSync)("git", ["remote", "update"], { stdio: "pipe" });
+        (0,external_child_process_namespaceObject.execSync)(`git remote add -f destination ${destination} 2>&1`);
+        (0,external_child_process_namespaceObject.execSync)(`git remote update 2>&1`);
     }
     /**
      * Keeping git diff output in memory throws `code: 'ENOBUFS'`  error when
      * called from within action. Writing to file, then reading avoids this error.
      */
-    const diffOutput = (0,external_child_process_namespaceObject.execFileSync)("git", [
-        "diff",
-        `destination/${safeBaseRef}...origin/${safeHeadRef}`,
-    ]);
-    external_fs_.writeFileSync(DIFF_OUTPUT, diffOutput);
+    (0,external_child_process_namespaceObject.execSync)(`git diff "destination/${baseRef}"..."origin/${headRef}" > ${DIFF_OUTPUT}`);
     const files = parse_diff(external_fs_.readFileSync(DIFF_OUTPUT).toString());
-    const filePathToChangedLines = new Map();
-    for (const file of files) {
+    const filePathToDiffInfo = new Map();
+    console.log(`DEBUG: Parsing diff for ${files.length} files`);
+    for (let file of files) {
         if (file.to && file.to !== "/dev/null") {
             const changedLines = new Set();
-            for (const chunk of file.chunks) {
-                for (const change of chunk.changes) {
+            const lineToHunk = new Map();
+            file.chunks.forEach((chunk, hunkIndex) => {
+                console.log(`DEBUG: File ${file.to}, Hunk ${hunkIndex}, Range: ${chunk.newStart}-${chunk.newStart + chunk.newLines - 1}`);
+                for (let change of chunk.changes) {
                     if (change.type === "add" || change.type === "del") {
                         changedLines.add(change.ln);
+                        lineToHunk.set(change.ln, hunkIndex);
+                        console.log(`DEBUG:   ${change.type} line ${change.ln}`);
                     }
                 }
-            }
-            filePathToChangedLines.set(file.to, changedLines);
+            });
+            console.log(`DEBUG: File ${file.to} has ${changedLines.size} changed lines: ${Array.from(changedLines).sort((a, b) => a - b).join(', ')}`);
+            filePathToDiffInfo.set(file.to, { changedLines, lineToHunk });
         }
     }
-    return filePathToChangedLines;
+    return filePathToDiffInfo;
 }
 //# sourceMappingURL=git-actions.js.map
+// EXTERNAL MODULE: external "path"
+var external_path_ = __nccwpck_require__(1017);
 ;// CONCATENATED MODULE: ./lib/common.js
 
 function fileExists(filePath) {
@@ -64227,10 +64220,14 @@ function getScannerViolationType(inputs, violation, engine) {
     if (!inputs.strictlyEnforcedRules) {
         return "Warning";
     }
-    for (const enforcedRule of JSON.parse(inputs.strictlyEnforcedRules)) {
-        if (enforcedRule.engine === engine &&
-            enforcedRule.category === violation.category &&
-            enforcedRule.rule === violation.ruleName) {
+    let violationDetail = {
+        engine: engine,
+        category: violation.category,
+        rule: violation.ruleName,
+    };
+    for (let enforcedRule of JSON.parse(inputs.strictlyEnforcedRules)) {
+        if (Object.entries(violationDetail).toString() ===
+            Object.entries(enforcedRule).toString()) {
             return "Error";
         }
     }
@@ -64240,52 +64237,6 @@ function getGithubFilePath(commitId, filePath) {
     return ["..", "tree", commitId, filePath].join("/");
 }
 //# sourceMappingURL=common.js.map
-// EXTERNAL MODULE: external "path"
-var external_path_ = __nccwpck_require__(1017);
-;// CONCATENATED MODULE: ./lib/sarif-parser.js
-
-/**
- * @description Parses a SARIF document into an array of ScannerFindings.
- * Pure function with no side effects.
- * @param sarifJson The parsed SARIF document
- * @returns Array of scanner findings grouped by engine and file
- */
-function parseSarifToFindings(sarifJson) {
-    const findings = [];
-    for (const run of sarifJson.runs) {
-        const rules = new Map(run.tool.driver.rules.map((rule) => [rule.id, rule]));
-        const engine = run.tool.driver.name;
-        const fileViolations = new Map();
-        for (const result of run.results) {
-            const rule = rules.get(result.ruleId);
-            const location = result.locations[0].physicalLocation;
-            const fileName = external_path_.normalize(location.artifactLocation.uri);
-            const violation = {
-                category: rule?.properties.category || "",
-                column: location.region.startColumn.toString(),
-                endColumn: location.region.endColumn?.toString() || "",
-                endLine: location.region.endLine?.toString() || "",
-                line: location.region.startLine.toString(),
-                message: result.message.text,
-                ruleName: result.ruleId,
-                severity: rule?.properties.severity || 0,
-                url: rule?.helpUri,
-            };
-            const existing = fileViolations.get(fileName);
-            if (existing) {
-                existing.push(violation);
-            }
-            else {
-                fileViolations.set(fileName, [violation]);
-            }
-        }
-        for (const [fileName, violations] of fileViolations) {
-            findings.push({ fileName, engine, violations });
-        }
-    }
-    return findings;
-}
-//# sourceMappingURL=sarif-parser.js.map
 ;// CONCATENATED MODULE: ./lib/sfdxCli.js
 /*
    Copyright 2022 Mitch Spano
@@ -64316,57 +64267,110 @@ class SfCLI {
         this.scannerFlags = scannerFlags;
     }
     /**
-     * @description Scans the files in the target directory and returns the findings. This is the method where
-     * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
+     * @description Scans the files using the Code Analyzer config file and returns the findings.
+     * This method runs the scanner to generate a SARIF file, then parses it and returns
      * the findings in a format that can be easily consumed by the reporter.
      */
     async getFindingsForFiles() {
-        await this.generateSarifOutputFile();
+        console.log(`Expected SARIF output file: ${this.scannerFlags.outfile}`);
+        await this.runCodeAnalyzer();
         if (!fileExists(this.scannerFlags.outfile)) {
-            throw new Error("SARIF output file not found");
+            throw new Error(`SARIF output file not found at: ${this.scannerFlags.outfile}`);
         }
+        console.log(`SARIF file confirmed at: ${this.scannerFlags.outfile}`);
+        return this.parseSarifFile();
+    }
+    /**
+     * @description Parses the SARIF file and converts it to ScannerFinding objects
+     */
+    parseSarifFile() {
+        console.log(`Reading SARIF file from: ${this.scannerFlags.outfile}`);
         const sarifContent = external_fs_.readFileSync(this.scannerFlags.outfile, "utf-8");
         const sarifJson = JSON.parse(sarifContent);
-        return parseSarifToFindings(sarifJson);
+        console.log(`SARIF version: ${sarifJson.version}, Runs: ${sarifJson.runs?.length || 0}`);
+        const findings = [];
+        // Handle empty or missing runs
+        if (!sarifJson.runs || sarifJson.runs.length === 0) {
+            console.log("No runs found in SARIF file");
+            return findings;
+        }
+        sarifJson.runs.forEach((run, runIndex) => {
+            // Handle missing rules
+            const rules = new Map((run.tool.driver.rules || []).map((rule) => [rule.id, rule]));
+            const engine = run.tool.driver.name;
+            console.log(`Processing run ${runIndex + 1}: engine=${engine}, rules=${rules.size}, results=${run.results?.length || 0}`);
+            // Handle missing results
+            if (!run.results || run.results.length === 0) {
+                console.log(`No results found for engine: ${engine}`);
+                return;
+            }
+            const fileViolations = new Map();
+            run.results.forEach((result, resultIndex) => {
+                // Skip results without locations
+                if (!result.locations || result.locations.length === 0) {
+                    console.warn(`Skipping result ${resultIndex} without locations: ${result.ruleId}`);
+                    return;
+                }
+                const location = result.locations[0].physicalLocation;
+                // Skip if location or artifactLocation is missing
+                if (!location || !location.artifactLocation || !location.artifactLocation.uri) {
+                    console.warn(`Skipping result ${resultIndex} with invalid location structure:`);
+                    console.warn(`  - has physicalLocation: ${!!location}`);
+                    console.warn(`  - has artifactLocation: ${!!location?.artifactLocation}`);
+                    console.warn(`  - has uri: ${!!location?.artifactLocation?.uri}`);
+                    console.warn(`  - ruleId: ${result.ruleId}`);
+                    return;
+                }
+                const fileName = external_path_.normalize(location.artifactLocation.uri);
+                const rule = rules.get(result.ruleId);
+                const violation = {
+                    category: rule?.properties?.category || "",
+                    column: location.region?.startColumn?.toString() || "1",
+                    endColumn: location.region?.endColumn?.toString() || "",
+                    endLine: location.region?.endLine?.toString() || "",
+                    line: location.region?.startLine?.toString() || "1",
+                    message: result.message?.text || "No message provided",
+                    ruleName: result.ruleId,
+                    severity: rule?.properties?.severity || 0,
+                    url: rule?.helpUri || "",
+                };
+                if (fileViolations.has(fileName)) {
+                    fileViolations.get(fileName).push(violation);
+                }
+                else {
+                    fileViolations.set(fileName, [violation]);
+                }
+            });
+            fileViolations.forEach((violations, fileName) => {
+                const finding = {
+                    fileName,
+                    engine,
+                    violations,
+                };
+                findings.push(finding);
+            });
+        });
+        return findings;
     }
     /**
-     * @description Executes a sfdx command on the command line
-     * @param commandName this is the 'topic' (namespace) and 'command' (action) to execute. ie: 'scanner run'
-     * @param cliArgs an array of strings to pass as arguments to the command
+     * @description Runs the sf code-analyzer using the config file approach
+     * This generates a SARIF file at the specified output location
      */
-    async cli(commandName, cliArgs = []) {
-        const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-        const jsonPayload = (0,external_child_process_namespaceObject.execSync)(cliCommand, {
-            maxBuffer: 10485760,
-        }).toString();
-        return JSON.parse(jsonPayload).result;
-    }
-    /**
-     * @description uses the sf scanner to generate a .sarif file containing the scan results.
-     * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
-     * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
-     */
-    async generateSarifOutputFile() {
-        this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
-        const scannerCliArgs = Object.keys(this.scannerFlags)
-            .map((key) => this.scannerFlags[key]
-            ? [`--${key}`, this.scannerFlags[key]]
-            : [])
-            .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-        console.log("Executing Sf scanner on the command line");
-        return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
-    }
-    /**
-     * @description Registers a new rule with the scanner
-     * @param path The path to the rule's .jar file
-     * @param language the language the rule is written for ie: apex, html, etc.
-     */
-    async registerRule(path, language) {
-        return this.cli("scanner rule add", [
-            `--path="${path}"`,
-            `--language="${language}"`,
-            "--json",
-        ]);
+    async runCodeAnalyzer() {
+        try {
+            console.log("Executing sf code-analyzer with config file...");
+            const cliCommand = `sf code-analyzer run -c "${this.scannerFlags.configFile}" -f "${this.scannerFlags.outfile}"`;
+            console.log(`Running command: ${cliCommand}`);
+            (0,external_child_process_namespaceObject.execSync)(cliCommand, {
+                maxBuffer: 10485760,
+                stdio: 'inherit'
+            });
+            console.log("Code analyzer execution completed successfully");
+        }
+        catch (err) {
+            console.error("Error running code analyzer:", err);
+            throw err;
+        }
     }
 }
 //# sourceMappingURL=sfdxCli.js.map
@@ -68199,14 +68203,16 @@ class BaseReporter {
     inputs;
     issues;
     context;
+    diffInfo;
     octokit = new CustomOctokit();
-    constructor({ context, inputs }) {
+    constructor({ context, inputs, diffInfo }) {
         this.hasHaltingError = false;
         this.issues = [];
         this.context = context;
         this.inputs = inputs;
+        this.diffInfo = diffInfo;
     }
-    async write() {
+    write() {
         throw new Error("Method not implemented.");
     }
     translateViolationToReport(_filePath, _violation, _engine) {
@@ -68261,27 +68267,89 @@ class CommentsReporter extends BaseReporter {
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const pullRequestNumber = github.context.payload.pull_request?.number;
-        const githubReviewComments = comments.map((comment) => ({
-            path: comment.path,
-            body: `${comment.body}`,
-            line: comment.line > comment.start_line ? comment.line : comment.line + 1,
-            side: comment.side,
-            start_line: comment.start_line,
-            start_side: comment.start_side,
-        }));
+        this.logger(`Processing ${comments.length} comments for PR review`);
+        // CRITICAL: Filter out comments where the target line is NOT in the diff
+        const validComments = comments.filter((comment) => {
+            const diffInfo = this.diffInfo.get(comment.path);
+            if (!diffInfo) {
+                this.logger(`WARNING: No diff info found for ${comment.path} - rejecting comment`);
+                return false;
+            }
+            const lineInDiff = diffInfo.changedLines.has(comment.line);
+            if (!lineInDiff) {
+                this.logger(`WARNING: Rejecting comment for ${comment.path} line ${comment.line} - not in diff. Changed lines: ${Array.from(diffInfo.changedLines).sort((a, b) => a - b).join(', ')}`);
+                return false;
+            }
+            this.logger(`✓ Comment for ${comment.path} line ${comment.line} is valid`);
+            return true;
+        });
+        this.logger(`After filtering: ${validComments.length} valid comments (rejected ${comments.length - validComments.length})`);
+        if (validComments.length === 0) {
+            this.logger("No valid comments to submit - all were filtered out");
+            return;
+        }
+        // Create review comments with intelligent multi-line vs single-line logic
+        const githubReviewComments = validComments.map((comment) => {
+            const isMultiLine = comment.line !== comment.start_line;
+            const diffInfo = this.diffInfo.get(comment.path);
+            this.logger(`Creating comment for ${comment.path} lines ${comment.start_line}-${comment.line}`);
+            // For multi-line comments, verify both lines are in the diff and in the same hunk
+            if (isMultiLine && diffInfo) {
+                const startLineInDiff = diffInfo.changedLines.has(comment.start_line);
+                const endLineInDiff = diffInfo.changedLines.has(comment.line);
+                const startHunk = diffInfo.lineToHunk.get(comment.start_line);
+                const endHunk = diffInfo.lineToHunk.get(comment.line);
+                this.logger(`  Multi-line: start_line ${comment.start_line} in diff: ${startLineInDiff} (hunk ${startHunk}), end line ${comment.line} in diff: ${endLineInDiff} (hunk ${endHunk})`);
+                // Only create multi-line comment if BOTH lines are in the diff AND in the same hunk
+                if (startLineInDiff && endLineInDiff && startHunk !== undefined && startHunk === endHunk) {
+                    this.logger(`  ✓ Creating multi-line comment`);
+                    return {
+                        path: comment.path,
+                        body: `${comment.body}`,
+                        line: comment.line,
+                        side: comment.side,
+                        start_line: comment.start_line,
+                        start_side: comment.start_side,
+                    };
+                }
+                else {
+                    this.logger(`  ! Falling back to single-line comment on line ${comment.line}`);
+                }
+            }
+            // Single-line comment (or fallback from invalid multi-line)
+            this.logger(`  ✓ Creating single-line comment on line ${comment.line}`);
+            return {
+                path: comment.path,
+                body: `${comment.body}`,
+                line: comment.line,
+                side: comment.side,
+            };
+        });
         const apiUrl = `/repos/${owner}/${repo}/pulls/${pullRequestNumber}/reviews`;
         const jsonBody = {
             body: "Salesforce Scanner found some issues in this pull request. Please review the comments below and make the necessary changes.",
             event: "REQUEST_CHANGES",
             comments: githubReviewComments,
         };
+        // Write payload to file for debugging
         try {
+            const fs = require("fs");
+            fs.writeFileSync("pr-review-payload.json", JSON.stringify(jsonBody, null, 2));
+            this.logger("Wrote payload to pr-review-payload.json for inspection");
+        }
+        catch (err) {
+            this.logger(`Failed to write payload file: ${err}`);
+        }
+        try {
+            this.logger(`Submitting review with ${githubReviewComments.length} comments`);
             await this.octokit.request(`POST ${apiUrl}`, {
                 data: jsonBody,
             });
+            this.logger("Successfully created PR review");
         }
         catch (error) {
             console.error("Error creating pull request review:", JSON.stringify(error, null, 2));
+            throw error;
         }
     }
     /**
@@ -68359,16 +68427,17 @@ class CommentsReporter extends BaseReporter {
         // This gets any comments that have our hidden comment prefix
         const existingComments = await this.getExistingComments();
         this.logger(`Found ${existingComments.length} existing comments with the hidden comment prefix indicating the Scanner as the author.`);
-        // Fetch resolved review comment threads ONCE
-        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // This returns the difference between all issues and existing comments.
         // The idea is that we'll discover here the issues that need net-new comments to be written.
-        const netNewIssues = this.filterOutExistingComments(existingComments, resolvedComments);
+        const netNewIssues = await this.filterOutExistingComments(existingComments);
         this.logger(`Found ${netNewIssues.length} new issues that do not have an existing comment or a resolved comment thread.`);
         // moving this up the stack to enable deleting resolved comments before trying to write new ones
         if (this.inputs.deleteResolvedComments) {
             await this.deleteResolvedComments(this.issues, existingComments);
         }
+        // If there are no new comments to write, then we'll just log a message and return.
+        // Fetch resolved review comment threads
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         // Identify unresolved existing comments
         const unresolvedExistingComments = existingComments.filter((existingComment) => !resolvedComments.find((resolvedComment) => this.matchComment(existingComment, resolvedComment)));
         this.logger(`Found ${unresolvedExistingComments.length} unresolved existing comments.`);
@@ -68401,10 +68470,14 @@ class CommentsReporter extends BaseReporter {
      * @param existingComments
      * @private
      */
-    filterOutExistingComments(existingComments, resolvedComments) {
+    async filterOutExistingComments(existingComments) {
+        // iterate over the issues and filter out any that do not have existing comments
+        // pull the Pull Request review threads that are resolved for this PR
+        const resolvedComments = await this.fetchResolvedReviewCommentThreads();
         const newIssues = this.issues.filter((issue) => {
             return !existingComments.find((existingComment) => this.matchComment(issue, existingComment));
         });
+        // Filter out resolved comments
         return newIssues.filter((issue) => {
             return !resolvedComments.find((resolvedComment) => this.matchComment(issue, resolvedComment));
         });
@@ -68434,18 +68507,18 @@ class CommentsReporter extends BaseReporter {
      *  the hidden comment prefix and if they were generated by a bot
      */
     async getExistingComments() {
+        let result = Array();
         try {
-            const owner = github.context.repo.owner;
-            const repo = github.context.repo.repo;
-            const prNumber = github.context.payload.pull_request?.number;
-            const endpoint = `GET /repos/${owner}/${repo}/${prNumber ? `pulls/${prNumber}` : `commits/${github.context.sha}`}/comments`;
-            const result = (await this.octokit.paginate(endpoint));
-            return result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) && comment.user.type === "Bot");
+            // @ts-ignore
+            result = await this.performGithubRequest("GET");
+            result = result.filter((comment) => comment.body.includes(HIDDEN_COMMENT_PREFIX) &&
+                comment.user.type === "Bot");
         }
         catch (error) {
-            console.error("Error when fetching existing comments: " + JSON.stringify(error, null, 2));
-            return [];
+            console.error("Error when fetching existing comments: " +
+                JSON.stringify(error, null, 2));
         }
+        return result;
     }
     /**
      * @description Compares two comments and determines if they are the same
@@ -68475,13 +68548,14 @@ class CommentsReporter extends BaseReporter {
      */
     translateViolationToReport(filePath, violation, engine) {
         const startLine = parseInt(violation.line);
-        let endLine = violation.endLine
+        const endLine = violation.endLine
             ? parseInt(violation.endLine)
             : parseInt(violation.line);
-        if (endLine === startLine) {
-            endLine++;
-        }
+        this.logger(`Creating comment for ${filePath}, rule ${violation.ruleName}, lines ${startLine}-${endLine}`);
         const violationType = getScannerViolationType(this.inputs, violation, engine);
+        // if (violationType === ERROR) {
+        //   this.hasHaltingError = true;
+        // }
         const commit_id = this.context.payload.pull_request
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
@@ -68523,7 +68597,9 @@ class CommentsReporter extends BaseReporter {
     }
 }
 //# sourceMappingURL=comments-reporter.js.map
-;// CONCATENATED MODULE: ./lib/reporter/annotations-reporter.js
+// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
+var action_dist_node = __nccwpck_require__(1231);
+;// CONCATENATED MODULE: ./lib/reporter/annoations-reporter.js
 /*
    Copyright 2022 Mitch Spano
    Licensed under the Apache License, Version 2.0 (the "License");
@@ -68539,6 +68615,7 @@ class CommentsReporter extends BaseReporter {
 
 
 
+
 const ERROR = "Error";
 const RIGHT = "RIGHT";
 class AnnotationsReporter extends BaseReporter {
@@ -68548,10 +68625,11 @@ class AnnotationsReporter extends BaseReporter {
      * @private
      */
     performGithubRequest(body) {
+        const octokit = new action_dist_node.Octokit();
         const owner = github.context.repo.owner;
         const repo = github.context.repo.repo;
         const endpoint = `POST /repos/${owner}/${repo}/check-runs`;
-        return this.octokit.request(endpoint, body);
+        return octokit.request(endpoint, body);
     }
     /**
      * @description Writes the Check Run to GitHub
@@ -68569,6 +68647,21 @@ class AnnotationsReporter extends BaseReporter {
             ? this.context.payload.pull_request.head.sha
             : this.context.sha;
         if (this.issues) {
+            const maxAnnotations = 50;
+            const totalIssues = this.issues.length;
+            // Sort issues by severity (most severe first - severity 1 is worst, 5 is least)
+            const sortedIssues = [...this.issues].sort((a, b) => {
+                // Extract severity from title like "RuleName (sev: 3)"
+                const getSeverity = (title) => {
+                    const match = title.match(/\(sev: (\d+)\)/);
+                    return match ? parseInt(match[1]) : 999; // Default to high number if not found
+                };
+                return getSeverity(a.title) - getSeverity(b.title); // Ascending order (1 before 5)
+            });
+            const limitedIssues = sortedIssues.slice(0, maxAnnotations);
+            if (totalIssues > maxAnnotations) {
+                console.log(`Limiting annotations from ${totalIssues} to ${maxAnnotations} (sorted by severity, most severe first - severity 1 is worst)`);
+            }
             const request = {
                 name: "sfdx-scanner",
                 head_sha: commit_id,
@@ -68576,8 +68669,10 @@ class AnnotationsReporter extends BaseReporter {
                 conclusion: conclusion,
                 output: {
                     title: "Results from sfdx-scanner",
-                    summary: `${this.issues.length} violations found`,
-                    annotations: this.issues,
+                    summary: totalIssues > maxAnnotations
+                        ? `${totalIssues} violations found (showing top ${maxAnnotations} by severity)`
+                        : `${totalIssues} violations found`,
+                    annotations: limitedIssues,
                 },
             };
             this.checkHasHaltingError();
@@ -68619,11 +68714,9 @@ class AnnotationsReporter extends BaseReporter {
         });
     }
 }
-//# sourceMappingURL=annotations-reporter.js.map
-// EXTERNAL MODULE: external "zlib"
-var external_zlib_ = __nccwpck_require__(9796);
-// EXTERNAL MODULE: ./node_modules/@octokit/action/dist-node/index.js
-var action_dist_node = __nccwpck_require__(1231);
+//# sourceMappingURL=annoations-reporter.js.map
+;// CONCATENATED MODULE: external "node:child_process"
+const external_node_child_process_namespaceObject = __WEBPACK_EXTERNAL_createRequire(import.meta.url)("node:child_process");
 ;// CONCATENATED MODULE: ./lib/SarifUploader.js
 
 
@@ -68632,37 +68725,33 @@ var action_dist_node = __nccwpck_require__(1231);
 
 
 /**
- * @description Compresses content with gzip and encodes to base64.
- * Uses Node.js built-in APIs instead of shell commands for portability.
- * @param content The string content to compress and encode
- * @returns Base64-encoded gzipped content
- */
-function compressAndEncode(content) {
-    const compressed = (0,external_zlib_.gzipSync)(Buffer.from(content, "utf-8"));
-    return compressed.toString("base64");
-}
-/**
  * @description This class is responsible for uploading the SARIF report to the GitHub code scanning API.
+ * It filters the SARIF file to only include violations in changed files and lines before uploading.
  */
 class SarifUploader {
     sarifPath;
+    filteredSarifPath;
     octokit;
     constructor(scannerFlags) {
         this.sarifPath = scannerFlags.outfile;
+        this.filteredSarifPath = scannerFlags.outfile.replace('.sarif', '-filtered.sarif');
         this.octokit = new action_dist_node.Octokit();
     }
     /**
-     * @description Uploads the SARIF report to the GitHub code scanning API.
+     * @description Filters the SARIF file to only include results for changed files and lines,
+     * then uploads it to the GitHub code scanning API.
+     * @param filePathToChangedLines Map of file paths to the set of changed line numbers
      */
-    async uploadSarifFileToCodeQL() {
-        console.log("Uploading SARIF report ...");
+    async uploadSarifFileToCodeQL(filePathToChangedLines) {
+        console.log("Filtering and uploading SARIF report ...");
         try {
+            // Filter the SARIF file to only include violations in changed lines
+            await this.filterSarifFile(filePathToChangedLines);
+            let base64Data = await this.execShellCmds(this.filteredSarifPath);
             const pullRequestNumber = github.context.payload.pull_request?.number;
             const ref = `refs/pull/${pullRequestNumber}/head`;
-            const toolName = "SfScanner";
-            if (pullRequestNumber && fileExists(this.sarifPath)) {
-                const sarifContent = external_fs_.readFileSync(this.sarifPath, "utf-8");
-                const base64Data = compressAndEncode(sarifContent);
+            const toolName = "SfScaner";
+            if (pullRequestNumber && fileExists(this.filteredSarifPath)) {
                 await this.octokit.codeScanning.uploadSarif({
                     owner: github.context.repo.owner,
                     repo: github.context.repo.repo,
@@ -68671,7 +68760,7 @@ class SarifUploader {
                     sarif: base64Data,
                     tool_name: toolName,
                 });
-                core.info(`SARIF report uploaded successfully for pull request #${pullRequestNumber}`);
+                core.info(`Filtered SARIF report uploaded successfully for pull request #${pullRequestNumber}`);
             }
             else {
                 core.warning("No pull request found. Skipping SARIF upload.");
@@ -68681,45 +68770,184 @@ class SarifUploader {
             core.setFailed(`Failed to upload SARIF report: ${error.message}`);
         }
     }
+    /**
+     * @description Filters the SARIF file to only include results that are in changed files and lines,
+     * sorts by severity (most severe first - severity 1 is worst, 5 is least), and limits to 50 results maximum ACROSS ALL ENGINES.
+     * @param filePathToChangedLines Map of file paths to the set of changed line numbers
+     */
+    async filterSarifFile(filePathToChangedLines) {
+        console.log(`Filtering SARIF file: ${this.sarifPath}`);
+        if (!fileExists(this.sarifPath)) {
+            throw new Error(`SARIF file not found at: ${this.sarifPath}`);
+        }
+        const sarifContent = external_fs_.readFileSync(this.sarifPath, "utf-8");
+        const sarifJson = JSON.parse(sarifContent);
+        let totalResults = 0;
+        const maxResults = 50;
+        // Track severity counts for original SARIF file
+        const originalSeverityCounts = new Map();
+        const filteredSeverityCounts = new Map();
+        const allFilteredResults = [];
+        // Filter each run's results
+        if (sarifJson.runs) {
+            sarifJson.runs.forEach((run, runIndex) => {
+                if (!run.results) {
+                    return;
+                }
+                const originalCount = run.results.length;
+                totalResults += originalCount;
+                // Create a map of rule IDs to their severity for sorting
+                const ruleSeverityMap = new Map();
+                if (run.tool.driver.rules) {
+                    run.tool.driver.rules.forEach((rule) => {
+                        ruleSeverityMap.set(rule.id, rule.properties?.severity || 0);
+                    });
+                }
+                // Count original severities
+                run.results.forEach((result) => {
+                    const severity = ruleSeverityMap.get(result.ruleId) || 0;
+                    originalSeverityCounts.set(severity, (originalSeverityCounts.get(severity) || 0) + 1);
+                });
+                // Filter results to only include those in changed files and lines
+                const filteredResultsForRun = run.results.filter((result) => {
+                    // Skip if no locations
+                    if (!result.locations || result.locations.length === 0) {
+                        return false;
+                    }
+                    const location = result.locations[0].physicalLocation;
+                    // Skip if location structure is invalid
+                    if (!location || !location.artifactLocation || !location.artifactLocation.uri) {
+                        return false;
+                    }
+                    const filePath = location.artifactLocation.uri
+                        .replace(process.cwd() + "/", "")
+                        .replace("file:", "");
+                    // Check if this file has any changed lines
+                    const changedLines = filePathToChangedLines.get(filePath);
+                    if (!changedLines || changedLines.size === 0) {
+                        return false;
+                    }
+                    // Check if the violation is within the changed lines
+                    const startLine = location.region?.startLine || 0;
+                    const endLine = location.region?.endLine || startLine;
+                    // Check if any line in the violation range is in the changed lines
+                    for (let line = startLine; line <= endLine; line++) {
+                        if (changedLines.has(line)) {
+                            return true;
+                        }
+                    }
+                    return false;
+                });
+                // Add filtered results with metadata to the global list
+                filteredResultsForRun.forEach((result) => {
+                    const severity = ruleSeverityMap.get(result.ruleId) || 0;
+                    allFilteredResults.push({
+                        result,
+                        severity,
+                        runIndex,
+                    });
+                });
+                console.log(`  Engine ${run.tool.driver.name}: ${originalCount} → ${filteredResultsForRun.length} results`);
+            });
+        }
+        // Sort ALL results by severity (lowest number = most severe, so ascending order)
+        // Severity 1 is most severe, 5 is least severe
+        allFilteredResults.sort((a, b) => a.severity - b.severity);
+        // Limit to 50 results total
+        const limitedResults = allFilteredResults.slice(0, maxResults);
+        // Count filtered severities
+        limitedResults.forEach((item) => {
+            filteredSeverityCounts.set(item.severity, (filteredSeverityCounts.get(item.severity) || 0) + 1);
+        });
+        // Distribute the limited results back to their respective runs
+        if (sarifJson.runs) {
+            // First, clear all results
+            sarifJson.runs.forEach((run) => {
+                if (run.results) {
+                    run.results = [];
+                }
+            });
+            // Then, add back only the top 50 results
+            limitedResults.forEach((item) => {
+                if (sarifJson.runs && sarifJson.runs[item.runIndex].results) {
+                    sarifJson.runs[item.runIndex].results.push(item.result);
+                }
+            });
+        }
+        const filteredResults = limitedResults.length;
+        const totalFiltered = allFilteredResults.length;
+        console.log(`Total results: ${totalResults} → ${totalFiltered} (after filtering to changed lines)`);
+        if (totalFiltered > maxResults) {
+            console.log(`Limited to top ${maxResults} most severe violations (severity 1 is most severe, from ${totalFiltered} filtered results)`);
+        }
+        // Display severity breakdown tables
+        this.displaySeverityTable("Original SARIF File", originalSeverityCounts, totalResults);
+        this.displaySeverityTable("Filtered SARIF File", filteredSeverityCounts, filteredResults);
+        // Write the filtered SARIF to a new file
+        external_fs_.writeFileSync(this.filteredSarifPath, JSON.stringify(sarifJson, null, 2));
+        console.log(`Filtered SARIF written to: ${this.filteredSarifPath}`);
+    }
+    /**
+     * @description Displays a formatted table showing the count of issues by severity level
+     * @param title The title for the table
+     * @param severityCounts Map of severity level to count
+     * @param total Total number of issues
+     */
+    displaySeverityTable(title, severityCounts, total) {
+        console.log(`\n${title} - Issues by Severity:`);
+        console.log('┌──────────┬───────────┐');
+        console.log('│ Severity │   Count   │');
+        console.log('├──────────┼───────────┤');
+        // Get all severity levels and sort them in ascending order (1 is most severe, 5 is least)
+        const severities = Array.from(severityCounts.keys()).sort((a, b) => a - b);
+        if (severities.length === 0) {
+            console.log('│   N/A    │     0     │');
+        }
+        else {
+            severities.forEach((severity) => {
+                const count = severityCounts.get(severity) || 0;
+                const severityStr = severity.toString().padStart(8);
+                const countStr = count.toString().padStart(9);
+                console.log(`│${severityStr} │${countStr} │`);
+            });
+        }
+        console.log('├──────────┼───────────┤');
+        const totalStr = total.toString().padStart(9);
+        console.log(`│  Total   │${totalStr} │`);
+        console.log('└──────────┴───────────┘');
+    }
+    /**
+     * @description Executes the gzip and base64 commands to compress and encode the SARIF report.
+     * @param sarifPath path to the SARIF report.
+     */
+    async execShellCmds(sarifPath) {
+        return new Promise((resolve, reject) => {
+            const gzipCommand = (0,external_node_child_process_namespaceObject.spawn)("gzip", ["-c", sarifPath]);
+            const base64Command = (0,external_node_child_process_namespaceObject.spawn)("base64", ["-w0"]);
+            gzipCommand.stdout.pipe(base64Command.stdin);
+            let base64Output = "";
+            base64Command.stdout.on("data", (data) => {
+                base64Output += data.toString();
+            });
+            base64Command.on("close", (code) => {
+                if (code === 0) {
+                    resolve(base64Output);
+                }
+                else {
+                    reject(new Error(`Command execution failed with code ${code}`));
+                }
+            });
+            gzipCommand.on("error", (error) => {
+                reject(error);
+            });
+            base64Command.on("error", (error) => {
+                reject(error);
+            });
+        });
+    }
 }
 //# sourceMappingURL=SarifUploader.js.map
-;// CONCATENATED MODULE: ./lib/engine-selection.js
-
-/**
- * @description Maps scanner engine names to the file extensions they analyze.
- */
-const ENGINE_FILE_EXTENSIONS = {
-    pmd: [".cls", ".trigger"],
-    eslint: [".js", ".ts", ".html"],
-    "eslint-lwc": [".js", ".html"],
-    "retire-js": [".js"],
-    sfge: [".cls", ".trigger"],
-    cpd: [".cls", ".trigger", ".js", ".ts", ".html"],
-};
-/**
- * @description Determines which scanner engines are relevant based on the file
- * extensions present in the changed files. If the user explicitly specified
- * engines, the result is intersected with that list (only narrows, never expands).
- * @param filePaths List of file paths to be scanned
- * @param userEngines Comma-separated engine names from the user's action input
- * @return Array of engine names that should be executed
- */
-function getRequiredEngines(filePaths, userEngines) {
-    const extensions = new Set(filePaths.map((filePath) => external_path_.extname(filePath).toLowerCase()));
-    const relevantEngines = Object.entries(ENGINE_FILE_EXTENSIONS)
-        .filter(([, exts]) => exts.some((ext) => extensions.has(ext)))
-        .map(([engine]) => engine);
-    if (!userEngines) {
-        return relevantEngines;
-    }
-    const requestedEngines = userEngines
-        .split(",")
-        .map((e) => e.trim().toLowerCase());
-    return relevantEngines.filter((engine) => requestedEngines.includes(engine));
-}
-//# sourceMappingURL=engine-selection.js.map
 ;// CONCATENATED MODULE: ./lib/SfScannerPullRequest.js
-
 
 
 
@@ -68742,24 +68970,26 @@ class SfScannerPullRequest {
      * @description Constructor for the sfdx scanner pull request action
      */
     constructor() {
+        const configFile = (0,core.getInput)("code-analyzer-config");
+        if (!configFile) {
+            (0,core.setFailed)("code-analyzer-config input is required");
+            throw new Error("code-analyzer-config input is required");
+        }
+        const sarifOutputFile = (0,core.getInput)("sarif-output-file");
         this.scannerFlags = {
-            category: (0,core.getInput)("category"),
-            engine: (0,core.getInput)("engine"),
-            env: (0,core.getInput)("eslint-env"),
-            eslintconfig: (0,core.getInput)("eslintconfig"),
-            pmdconfig: (0,core.getInput)("pmdconfig"),
-            tsConfig: (0,core.getInput)("tsconfig"),
-            format: "sarif", // This isn't configurable, because we use the sarif output to process the findings
-            outfile: "sfdx-scan.sarif", // This could be configurable, but isn't currently
+            configFile: configFile,
+            outfile: sarifOutputFile || "sfca-results.sarif",
         };
+        console.log(`Scanner configuration:`);
+        console.log(`  - Config file: ${this.scannerFlags.configFile}`);
+        console.log(`  - SARIF output: ${this.scannerFlags.outfile}`);
         /**
          * @description The inputs to the action. These are configurable by the user, and control the behavior of
          * the action.
          * They are defined as configurable in the action.yml file.
          */
         this.inputs = {
-            reportMode: ((0,core.getInput)("report-mode") || "check-runs"),
-            customPmdRules: (0,core.getInput)("custom-pmd-rules"),
+            reportMode: (0,core.getInput)("report-mode") || "check-runs",
             maxNumberOfComments: parseInt((0,core.getInput)("max-number-of-comments")) || 100, // default of 100 comments
             rateLimitWaitTime: parseInt((0,core.getInput)("rate-limit-wait-time")) || 60000, // default of 1 minute
             rateLimitRetries: parseInt((0,core.getInput)("rate-limit-retries")) || 5, // default of 5 retries
@@ -68767,16 +68997,16 @@ class SfScannerPullRequest {
             severityThreshold: this.validateThresholdInput(),
             strictlyEnforcedRules: (0,core.getInput)("strictly-enforced-rules"),
             deleteResolvedComments: (0,core.getInput)("delete-resolved-comments") === "true",
-            target: github.context?.payload?.pull_request ? "" : (0,core.getInput)("target"),
-            runFlowScanner: (0,core.getInput)("run-flow-scanner") === "true",
             debug: (0,core.getInput)("debug") === "true",
             exportSarif: (0,core.getInput)("export-sarif") === "true",
         };
         this.pullRequest = github.context?.payload?.pull_request;
-        this.validateContext(this.pullRequest, this.inputs.target);
+        this.validateContext(this.pullRequest);
+        // Note: diffInfo will be set later in the workflow after we fetch the diff
         const reporterParams = {
             inputs: this.inputs,
             context: github.context,
+            diffInfo: new Map(), // Will be populated in workflow()
         };
         this.reporter =
             this.inputs.reportMode === "comments"
@@ -68800,21 +69030,20 @@ class SfScannerPullRequest {
         return normalizedThreshold;
     }
     /**
-     * @description validates that the execution context is a pull request, and that we have a valid target reference
+     * @description validates that the execution context is a pull request
      * @param pullRequest
-     * @param target
      */
-    validateContext(pullRequest, target) {
+    validateContext(pullRequest) {
         console.log("Validating that this action was invoked from an acceptable context...");
-        if (!pullRequest && !target) {
-            (0,core.setFailed)("This action is only applicable when invoked by a pull request, or with the target property supplied.");
+        if (!pullRequest) {
+            (0,core.setFailed)("This action is only applicable when invoked by a pull request.");
         }
     }
     /**
-     * @description Performs the static code analysis on the files in the temporary directory
+     * @description Performs the static code analysis using the Code Analyzer config file
      */
-    async performStaticCodeAnalysisOnFilesInDiff() {
-        console.log("Performing static code analysis on all of the relevant files...");
+    async performStaticCodeAnalysis() {
+        console.log("Performing static code analysis using Code Analyzer config file...");
         try {
             return await this.sfCli.getFindingsForFiles();
         }
@@ -68831,21 +69060,21 @@ class SfScannerPullRequest {
         return [];
     }
     /**
-     * @description Parses the findings from the sfdx scanner execution
+     * @description Parses the findings from the scanner execution
      * and determines if any of the findings are for lines which have changed.
      * If a finding exists and covers a changed line, then translate that finding
      * object into a comment object.
      */
-    filterFindingsToDiffScope(findings, filePathToChangedLines) {
-        console.log("Filtering the findings to just the lines which are part of the context...");
+    filterFindingsToDiffScope(findings, filePathToDiffInfo) {
+        console.log("Filtering the findings to just the lines which are part of the changed files...");
         for (let finding of findings) {
             const filePath = finding.fileName
                 .replace(process.cwd() + "/", "")
                 .replace("file:", "");
-            const relevantLines = filePathToChangedLines.get(filePath) || new Set();
+            const diffInfo = filePathToDiffInfo.get(filePath);
+            const relevantLines = diffInfo?.changedLines || new Set();
             for (let violation of finding.violations) {
-                if (!this.isInChangedLines(violation, relevantLines) &&
-                    !this.inputs.target) {
+                if (!this.isInChangedLines(violation, relevantLines)) {
                     continue;
                 }
                 this.reporter.translateViolationToReport(filePath, violation, finding.engine);
@@ -68869,79 +69098,40 @@ class SfScannerPullRequest {
         return true;
     }
     /**
-     * @description Constructs an array containing the file paths of the files to pass to the scanner
-     * @param filePathToChangedLines Map of file paths to the lines which have changed
-     * @param target The target file path to scan
-     * @returns file paths to scan
-     */
-    getFilesToScan(filePathToChangedLines, target) {
-        if (target) {
-            return [target];
-        }
-        let pathsWithChangedLines = [];
-        for (let [filePath, changedLines] of filePathToChangedLines) {
-            if (changedLines.size > 0) {
-                pathsWithChangedLines.push(filePath);
-            }
-        }
-        return pathsWithChangedLines;
-    }
-    /**
-     * @description Adds custom rules to the scanner's execution
-     * @param rules JSON string containing the custom rules to add
-     */
-    async registerCustomScannerRules(rules) {
-        for (let rule of JSON.parse(rules)) {
-            try {
-                await this.sfCli.registerRule(rule.path, rule.language);
-            }
-            catch (err) {
-                const typedErr = err;
-                console.error({
-                    message: typedErr.message,
-                    status: typedErr.status,
-                    stack: typedErr.stack,
-                    output: typedErr.output?.toString(),
-                });
-                (0,core.setFailed)("Something went wrong when registering custom rule.");
-            }
-        }
-    }
-    /**
      * @description The main workflow for the sfdx scanner pull request action
      */
     async workflow() {
         console.log("Beginning sf-scanner-pull-request run...");
-        let filePathToChangedLines = this.inputs.target
-            ? new Map()
-            : await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
-        let filesToScan = this.getFilesToScan(filePathToChangedLines, this.inputs.target);
-        if (filesToScan.length === 0) {
-            console.log("There are no files to scan - exiting now.");
+        // Get the diff to determine which lines changed in which files
+        let filePathToDiffInfo = await getDiffInPullRequest(this.pullRequest?.base?.ref, this.pullRequest?.head?.ref, this.pullRequest?.base?.repo?.clone_url);
+        if (filePathToDiffInfo.size === 0) {
+            console.log("There are no changed files - exiting now.");
             return;
         }
-        const requiredEngines = getRequiredEngines(filesToScan, this.scannerFlags.engine);
-        if (requiredEngines.length === 0) {
-            console.log("No relevant scanner engines for the changed file types - exiting now.");
-            return;
+        // Set the diffInfo on the reporter so it can validate comments against the diff
+        if (this.reporter instanceof CommentsReporter) {
+            this.reporter.diffInfo = filePathToDiffInfo;
         }
-        this.scannerFlags.engine = requiredEngines.join(",");
-        console.log(`Running scanner with engines: ${this.scannerFlags.engine}`);
-        this.scannerFlags.target = filesToScan.join(",");
-        if (this.inputs.customPmdRules) {
-            await this.registerCustomScannerRules(this.inputs.customPmdRules);
-        }
-        let diffFindings = await this.performStaticCodeAnalysisOnFilesInDiff();
-        this.filterFindingsToDiffScope(diffFindings, filePathToChangedLines);
+        console.log(`Diff contains ${filePathToDiffInfo.size} files with changes`);
+        // Run the scanner on all files (config file determines what to scan)
+        let allFindings = await this.performStaticCodeAnalysis();
+        // Filter findings to only show violations in changed lines
+        this.filterFindingsToDiffScope(allFindings, filePathToDiffInfo);
         try {
-            await this.reporter.write();
+            this.reporter.write();
         }
         catch (e) {
             console.error(JSON.stringify(e, null, 2));
             (0,core.setFailed)("An error occurred while trying to write to GitHub");
         }
         if (this.inputs.exportSarif) {
-            await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL();
+            // Upload filtered SARIF file (only violations in changed lines)
+            // Convert DiffInfo map to simple Set<number> map for SARIF uploader
+            const filePathToChangedLines = new Map();
+            filePathToDiffInfo.forEach((diffInfo, filePath) => {
+                filePathToChangedLines.set(filePath, diffInfo.changedLines);
+            });
+            await new SarifUploader(this.scannerFlags).uploadSarifFileToCodeQL(filePathToChangedLines);
         }
     }
 }

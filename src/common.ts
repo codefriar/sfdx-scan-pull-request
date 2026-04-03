@@ -4,15 +4,12 @@ import { ScannerViolation, ScannerViolationType } from "./sfdxCli.types.js";
 export type PluginInputs = {
   severityThreshold: number;
   strictlyEnforcedRules: string;
-  customPmdRules?: string;
   maxNumberOfComments: number;
   commentBatchSize: number;
   rateLimitWaitTime: number;
   rateLimitRetries: number;
   deleteResolvedComments: boolean;
-  reportMode: "comments" | "check-runs";
-  target: string;
-  runFlowScanner: boolean;
+  reportMode: string | "comments" | "check-runs";
   debug: boolean;
   exportSarif: boolean;
 };
@@ -37,15 +34,17 @@ export function getScannerViolationType(
   if (!inputs.strictlyEnforcedRules) {
     return "Warning";
   }
-  for (const enforcedRule of JSON.parse(inputs.strictlyEnforcedRules) as {
-    engine: string;
-    category: string;
-    rule: string;
+  let violationDetail = {
+    engine: engine,
+    category: violation.category,
+    rule: violation.ruleName,
+  };
+  for (let enforcedRule of JSON.parse(inputs.strictlyEnforcedRules) as {
+    [key in string]: string;
   }[]) {
     if (
-      enforcedRule.engine === engine &&
-      enforcedRule.category === violation.category &&
-      enforcedRule.rule === violation.ruleName
+      Object.entries(violationDetail).toString() ===
+      Object.entries(enforcedRule).toString()
     ) {
       return "Error";
     }

@@ -13,11 +13,12 @@
 
 import { execSync } from "child_process";
 import fs from "fs";
+import * as path from "path";
 import { fileExists } from "./common.js";
-import { parseSarifToFindings } from "./sarif-parser.js";
 import {
   ScannerFinding,
   ScannerFlags,
+  ScannerViolation,
   SfdxCommandResult,
 } from "./sfdxCli.types.js";
 import { SarifDocument } from "./sarif.types.js";
@@ -37,63 +38,123 @@ export default class SfCLI {
   }
 
   /**
-   * @description Scans the files in the target directory and returns the findings. This is the method where
-   * the bulk of the work is done. It's responsible for having the Sarif file created, parsing it and returning
+   * @description Scans the files using the Code Analyzer config file and returns the findings.
+   * This method runs the scanner to generate a SARIF file, then parses it and returns
    * the findings in a format that can be easily consumed by the reporter.
    */
-  async getFindingsForFiles(): Promise<ScannerFinding[]> {
-    await this.generateSarifOutputFile();
+  async getFindingsForFiles() {
+    console.log(`Expected SARIF output file: ${this.scannerFlags.outfile}`);
+    await this.runCodeAnalyzer();
     if (!fileExists(this.scannerFlags.outfile)) {
-      throw new Error("SARIF output file not found");
+      throw new Error(`SARIF output file not found at: ${this.scannerFlags.outfile}`);
     }
+    console.log(`SARIF file confirmed at: ${this.scannerFlags.outfile}`);
+    return this.parseSarifFile();
+  }
+
+  /**
+   * @description Parses the SARIF file and converts it to ScannerFinding objects
+   */
+  private parseSarifFile(): ScannerFinding[] {
+    console.log(`Reading SARIF file from: ${this.scannerFlags.outfile}`);
     const sarifContent = fs.readFileSync(this.scannerFlags.outfile, "utf-8");
     const sarifJson: SarifDocument = JSON.parse(sarifContent) as SarifDocument;
-    return parseSarifToFindings(sarifJson);
+
+    console.log(`SARIF version: ${sarifJson.version}, Runs: ${sarifJson.runs?.length || 0}`);
+    const findings: ScannerFinding[] = [];
+
+    // Handle empty or missing runs
+    if (!sarifJson.runs || sarifJson.runs.length === 0) {
+      console.log("No runs found in SARIF file");
+      return findings;
+    }
+
+    sarifJson.runs.forEach((run, runIndex) => {
+      // Handle missing rules
+      const rules = new Map(
+        (run.tool.driver.rules || []).map((rule) => [rule.id, rule])
+      );
+      const engine = run.tool.driver.name;
+      console.log(`Processing run ${runIndex + 1}: engine=${engine}, rules=${rules.size}, results=${run.results?.length || 0}`);
+
+      // Handle missing results
+      if (!run.results || run.results.length === 0) {
+        console.log(`No results found for engine: ${engine}`);
+        return;
+      }
+
+      const fileViolations = new Map<string, ScannerViolation[]>();
+      run.results.forEach((result, resultIndex) => {
+        // Skip results without locations
+        if (!result.locations || result.locations.length === 0) {
+          console.warn(`Skipping result ${resultIndex} without locations: ${result.ruleId}`);
+          return;
+        }
+
+        const location = result.locations[0].physicalLocation;
+
+        // Skip if location or artifactLocation is missing
+        if (!location || !location.artifactLocation || !location.artifactLocation.uri) {
+          console.warn(`Skipping result ${resultIndex} with invalid location structure:`);
+          console.warn(`  - has physicalLocation: ${!!location}`);
+          console.warn(`  - has artifactLocation: ${!!location?.artifactLocation}`);
+          console.warn(`  - has uri: ${!!location?.artifactLocation?.uri}`);
+          console.warn(`  - ruleId: ${result.ruleId}`);
+          return;
+        }
+
+        const fileName = path.normalize(location.artifactLocation.uri);
+        const rule = rules.get(result.ruleId);
+
+        const violation: ScannerViolation = {
+          category: rule?.properties?.category || "",
+          column: location.region?.startColumn?.toString() || "1",
+          endColumn: location.region?.endColumn?.toString() || "",
+          endLine: location.region?.endLine?.toString() || "",
+          line: location.region?.startLine?.toString() || "1",
+          message: result.message?.text || "No message provided",
+          ruleName: result.ruleId,
+          severity: rule?.properties?.severity || 0,
+          url: rule?.helpUri || "",
+        };
+
+        if (fileViolations.has(fileName)) {
+          fileViolations.get(fileName)!.push(violation);
+        } else {
+          fileViolations.set(fileName, [violation]);
+        }
+      });
+
+      fileViolations.forEach((violations, fileName) => {
+        const finding: ScannerFinding = {
+          fileName,
+          engine,
+          violations,
+        };
+
+        findings.push(finding);
+      });
+    });
+    return findings;
   }
 
   /**
-   * @description Executes a sfdx command on the command line
-   * @param commandName this is the 'topic' (namespace) and 'command' (action) to execute. ie: 'scanner run'
-   * @param cliArgs an array of strings to pass as arguments to the command
+   * @description Runs the sf code-analyzer using the config file approach
+   * This generates a SARIF file at the specified output location
    */
-  private async cli<T>(commandName: string, cliArgs: string[] = []) {
-    const cliCommand = `sf ${commandName} ${cliArgs.join(" ")}`;
-    const jsonPayload = execSync(cliCommand, {
-      maxBuffer: 10485760,
-    }).toString();
-    return (JSON.parse(jsonPayload) as SfdxCommandResult<T>).result;
-  }
-
-  /**
-   * @description uses the sf scanner to generate a .sarif file containing the scan results.
-   * Sarif is a bit more verbose than the default json output, but it is more structured and has the side
-   * effect of generating the output file in a format that can be easily consumed by the GitHub Security tab.
-   */
-  private async generateSarifOutputFile() {
-    this.scannerFlags.target = `"` + this.scannerFlags.target + `"`;
-    const scannerCliArgs = (
-      Object.keys(this.scannerFlags) as Array<keyof ScannerFlags>
-    )
-      .map<string[]>((key) =>
-        this.scannerFlags[key]
-          ? ([`--${key}`, this.scannerFlags[key]] as string[])
-          : []
-      )
-      .reduce((acc, [one, two]) => (one && two ? [...acc, one, two] : acc), []);
-    console.log("Executing Sf scanner on the command line");
-    return await this.cli("scanner run", [...scannerCliArgs, "--json"]);
-  }
-
-  /**
-   * @description Registers a new rule with the scanner
-   * @param path The path to the rule's .jar file
-   * @param language the language the rule is written for ie: apex, html, etc.
-   */
-  async registerRule(path: string, language: string) {
-    return this.cli<ScannerFinding[] | string>("scanner rule add", [
-      `--path="${path}"`,
-      `--language="${language}"`,
-      "--json",
-    ]);
+  private async runCodeAnalyzer() {
+    try {
+      console.log("Executing sf code-analyzer with config file...");
+      const cliCommand = `sf code-analyzer run -c "${this.scannerFlags.configFile}" -f "${this.scannerFlags.outfile}"`;
+      console.log(`Running command: ${cliCommand}`);
+      execSync(cliCommand, {
+        maxBuffer: 10485760,
+        stdio: 'inherit'
+      });
+      console.log("Code analyzer execution completed successfully");
+    } catch (err) {
+      console.error("Error running code analyzer:", err);
+      throw err;
+    }
   }
 }

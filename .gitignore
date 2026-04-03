@@ -5,6 +5,11 @@ coverage
 .sf
 *-diagnosis.json
 
-# Compiled test artifacts
-tests/*.js
-tests/*.js.map
+# Added by Illuminated Cloud
+.localdev/
+/IlluminatedCloud/
+/out/
+target/
+/.illuminatedCloud/
+**/tsconfig*.json
+**/*.tsbuildinfo
